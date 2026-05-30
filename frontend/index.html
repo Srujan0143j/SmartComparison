@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartCompare — ML & MongoDB Product Comparison Platform</title>
+    <!-- Outfit & Inter from Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <!-- FontAwesome for beautiful icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for ML charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <canvas id="bg-canvas" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -2; pointer-events: none; opacity: 0.35;"></canvas>
+    <div class="bg-gradient-circles">
+        <div class="circle circle-1"></div>
+        <div class="circle circle-2"></div>
+    </div>
+
+    <div id="page-wrapper">
+        <header>
+            <div class="nav-container">
+                <div class="logo" id="nav-logo">
+                    <i class="fa-solid fa-scale-balanced"></i> Smart<span>Compare</span>
+                </div>
+                <ul class="nav-links">
+                    <li><a href="#" class="active" id="nav-home">Home</a></li>
+                </ul>
+            </div>
+        </header>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="hero" id="hero-sec">
+            <h1>Find the Best Rated Products at the <span>Absolute Cheapest Price</span></h1>
+            <p>SmartCompare processes thousands of reviews, pricing differences, rating volumes, and brand trust to score and suggest products across stores.</p>
+            
+            <div class="search-container">
+                <div class="search-box-wrapper">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="search-input" placeholder="Search for OnePlus, iPhone, MacBook, Sony WH-1000XM5...">
+                    <button class="search-btn" id="search-btn">Search</button>
+                </div>
+                
+                <div class="categories-filter" id="category-chips">
+                    <div class="category-chip active" data-category="">All</div>
+                    <div class="category-chip" data-category="Smartphones">Smartphones</div>
+                    <div class="category-chip" data-category="Laptops">Laptops</div>
+                    <div class="category-chip" data-category="Headphones">Headphones</div>
+                    <div class="category-chip" data-category="TVs">TVs</div>
+                    <div class="category-chip" data-category="Cameras">Cameras</div>
+                    <div class="category-chip" data-category="Smartwatches">Smartwatches</div>
+                    <div class="category-chip" data-category="Audio Speakers">Speakers</div>
+                    <div class="category-chip" data-category="Gaming Consoles">Gaming</div>
+                    <div class="category-chip" data-category="Appliances">Appliances</div>
+                    <div class="category-chip" data-category="Monitors">Monitors</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Search Results Section -->
+        <section id="results-sec" style="display: none;">
+            <div class="results-section-title">
+                <span id="results-count-text">Search Results</span>
+                <span style="font-size: 0.875rem; font-weight: normal; color: var(--text-muted);">
+                    Select <i class="fa-solid fa-plus"></i> to compare models
+                </span>
+            </div>
+            <div class="results-grid" id="results-grid">
+                <!-- Product cards injected by JS -->
+            </div>
+        </section>
+
+        <!-- Loading spinner -->
+        <div class="spinner-wrapper" id="loading-spinner" style="display: none;">
+            <div class="spinner"></div>
+            <p id="loading-text">Analyzing models, calculating sentiment index...</p>
+        </div>
+    </main>
+
+    <!-- Compare Drawer Bar -->
+    <div class="compare-drawer" id="compare-drawer">
+        <div style="font-weight: 600;">Compare Models:</div>
+        <div class="compare-drawer-items" id="drawer-items-list">
+            <!-- Selected items injected by JS -->
+        </div>
+        <button class="drawer-compare-btn" id="drawer-compare-btn">Compare Now</button>
+    </div>
+    </div> <!-- End #page-wrapper -->
+
+    <!-- Store Comparison Modal (e.g. Amazon vs Flipkart vs Croma for 1 product) -->
+    <div class="modal-overlay" id="store-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <h2 id="store-modal-title">OnePlus 12</h2>
+                    <p id="store-modal-subtitle">Store-level comparison & Sentiment Analysis</p>
+                </div>
+                <button class="close-modal-btn" id="close-store-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="comparison-container">
+                    <div>
+                        <h3 style="margin-bottom: 1rem;">Store Listings & ML Scores</h3>
+                        <div class="listings-list" id="store-listings-container">
+                            <!-- Store cards injected by JS -->
+                        </div>
+
+                        <!-- Technical Specs -->
+                        <h3 style="margin: 2rem 0 1rem;">Product Specifications</h3>
+                        <div class="specs-list" id="store-specs-container">
+                            <!-- Specs list injected by JS -->
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <!-- ML Analysis Sentiment -->
+                        <div class="sentiment-section" style="margin-bottom: 1.5rem;">
+                            <div class="sentiment-header">
+                               <i class="fa-solid fa-chart-line" style="color: var(--accent);"></i> NLP Sentiment Analysis
+                            </div>
+                            <div class="sentiment-bar-wrapper">
+                                <div class="sentiment-bar-labels">
+                                    <span>Negative</span>
+                                    <span>Neutral</span>
+                                    <span>Positive</span>
+                                </div>
+                                <div class="sentiment-bar-outer">
+                                    <div class="sentiment-bar-inner"></div>
+                                    <div class="sentiment-pointer" id="sentiment-pointer-marker" style="left: 50%;"></div>
+                                </div>
+                                <p style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 0.5rem; text-align: center;" id="sentiment-desc">
+                                    Average review sentiment: Neutral
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Chart container -->
+                        <div class="sentiment-section">
+                            <div class="sentiment-header">
+                                <i class="fa-solid fa-chart-bar" style="color: var(--success);"></i> Price vs ML Score
+                            </div>
+                            <div style="position: relative; height: 250px;">
+                                <canvas id="store-comparison-chart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Reviews Breakdown -->
+                        <div class="reviews-section">
+                            <div class="reviews-section-title">
+                                <i class="fa-solid fa-comments"></i> Sample Customer Reviews
+                            </div>
+                            <div id="reviews-list-container">
+                                <!-- Sample reviews injected by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cross Model Comparison Modal (e.g. iPhone 15 Pro vs Galaxy S24 Ultra) -->
+    <div class="modal-overlay" id="cross-modal">
+        <div class="modal-content" style="max-width: 1100px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <h2>Cross-Model Comparison</h2>
+                    <p>Side-by-side analysis of selected product models</p>
+                </div>
+                <button class="close-modal-btn" id="close-cross-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-wrapper">
+                    <table class="compare-table" id="cross-compare-table">
+                        <!-- Table header and rows injected by JS -->
+                    </table>
+                </div>
+
+                <div class="comparison-container" style="grid-template-columns: 1fr 1.2fr; gap: 2rem;">
+                    <div class="sentiment-section">
+                        <div class="sentiment-header">
+                            <i class="fa-solid fa-scale-balanced" style="color: var(--accent);"></i> ML Model Summary
+                        </div>
+                        <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem;">
+                            Comparative scores are calculated based on price difference, store ratings, and review sentiments.
+                        </p>
+                        <div class="specs-list" style="grid-template-columns: 1fr; gap: 0.5rem;" id="cross-ml-summary-cards">
+                            <!-- Smart cards -->
+                        </div>
+                    </div>
+
+                    <div class="sentiment-section">
+                        <div class="sentiment-header">
+                            <i class="fa-solid fa-chart-radar" style="color: var(--success);"></i> Scoring Matrix Comparison
+                        </div>
+                        <div style="position: relative; height: 300px;">
+                            <canvas id="cross-comparison-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
