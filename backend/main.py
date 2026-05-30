@@ -84,6 +84,37 @@ def get_categories():
         # If DB error, return static fallback categories
         return {"categories": ["Smartphones", "Laptops", "Headphones", "TVs", "Cameras"]}
 
+def get_specific_search_query(name: str, category: str, specs: dict) -> str:
+    import re
+    query_parts = [name]
+    
+    def clean_spec(val):
+        if not val:
+            return ""
+        val = str(val).strip()
+        val = re.sub(r'(\d+)\s+(GB|TB)', r'\1\2', val)
+        return val
+
+    if category in ["Smartphones", "Laptops"]:
+        ram = clean_spec(specs.get("RAM", ""))
+        storage = clean_spec(specs.get("Storage", ""))
+        if ram:
+            query_parts.append(ram)
+        if storage:
+            query_parts.append(storage)
+            
+    elif category == "Monitors":
+        size = clean_spec(specs.get("Screen Size", ""))
+        if size:
+            query_parts.append(size)
+            
+    elif category == "Gaming Consoles":
+        storage = clean_spec(specs.get("Storage", ""))
+        if storage:
+            query_parts.append(storage)
+            
+    return " ".join(query_parts)
+
 @app.get("/api/search")
 def search_products(
     q: Optional[str] = Query(None, description="Search term for product name, brand or category"),
@@ -114,10 +145,16 @@ def search_products(
         grouped_models = {}
         for p in scored_results:
             name = p["name"]
+            p_category = p["category"]
+            p_specs = p.get("specifications", {})
+            spec_query = get_specific_search_query(name, p_category, p_specs)
+            from backend.services.scraper import generate_store_url
+            url_to_use = generate_store_url(p["source"], spec_query, p_category)
+            
             listing_info = {
                 "source": p["source"],
                 "price": p["price"],
-                "url": p["url"],
+                "url": url_to_use,
                 "rating": p["rating"],
                 "ml_score": p["ml_score"] or 80.0,
                 "ml_label": p["ml_label"] or "Recommended"
@@ -248,6 +285,12 @@ def compare_stores(name: str = Query(..., description="Exact name of the product
         if not listings:
             raise HTTPException(status_code=404, detail=f"Product model '{name}' not found.")
             
+        category = listings[0]["category"]
+        specs = listings[0].get("specifications", {})
+        
+        # Build highly specific search query based on RAM/Storage or Display Size
+        specific_search_query = get_specific_search_query(name, category, specs)
+            
         # Get base price from database as reference
         base_db_price = min(l["price"] for l in listings)
         
@@ -257,8 +300,8 @@ def compare_stores(name: str = Query(..., description="Exact name of the product
         flipkart_prices = []
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            future_amazon = executor.submit(scrape_amazon_live, name)
-            future_flipkart = executor.submit(scrape_flipkart_live, name)
+            future_amazon = executor.submit(scrape_amazon_live, specific_search_query)
+            future_flipkart = executor.submit(scrape_flipkart_live, specific_search_query)
             
             try:
                 amazon_prices = future_amazon.result(timeout=4)
@@ -280,9 +323,13 @@ def compare_stores(name: str = Query(..., description="Exact name of the product
         elif flipkart_price:
             ref_price = flipkart_price
             
-        # Update prices in memory dynamically
+        # Update prices and links in memory dynamically
+        from backend.services.scraper import generate_store_url
         for l in listings:
             source = l["source"]
+            # Point URL to the specific RAM/Storage variant search
+            l["url"] = generate_store_url(source, specific_search_query, category)
+            
             if source == "Amazon" and amazon_price:
                 l["price"] = float(amazon_price)
             elif source == "Flipkart" and flipkart_price:
