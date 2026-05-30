@@ -30,11 +30,24 @@ def serialize_doc(doc):
 
 @app.on_event("startup")
 def startup_event():
-    # Attempt to seed database automatically if empty
+    # Only seed database automatically if it is currently empty
     try:
-        seed_database()
+        db = get_db()
+        from pymongo.database import Database
+        # Check if we are using mock database or real db
+        if isinstance(db, Database):
+            count = db["products"].count_documents({})
+        else:
+            # Fallback for mock db
+            count = len(db["products"].data)
+            
+        if count == 0:
+            print("Database is empty. Seeding simulated comparison data...")
+            seed_database()
+        else:
+            print(f"Database already contains {count} products. Skipping startup auto-seed.")
     except Exception as e:
-        print(f"Error seeding database during startup: {e}")
+        print(f"Error checking/seeding database during startup: {e}")
 
 @app.get("/")
 def home():

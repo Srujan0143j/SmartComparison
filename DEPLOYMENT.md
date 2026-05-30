@@ -1,19 +1,21 @@
-# How to Deploy SmartCompare for Public Access
+# How to Deploy SmartCompare for Public Access (Without Render)
 
-This guide provides step-by-step instructions for deploying both the **FastAPI Backend** and the **HTML/CSS/JS Frontend** to the cloud so anyone can access your application over the internet.
+This guide provides step-by-step instructions for deploying the **entire project** (both FastAPI backend and HTML frontend) to the cloud using **Vercel** and **MongoDB Atlas**—completely free and without needing Render.
 
 ---
 
 ## Architecture Overview
-To transition from running locally (`localhost`) to a public deployment:
+By utilizing Vercel's support for Python Serverless Functions, we can host the frontend and backend together under a single Vercel deployment:
 1. **Cloud Database:** Move from local MongoDB to a free **MongoDB Atlas** cloud database.
-2. **Cloud Backend:** Host the FastAPI Python application on **Render** (free tier).
-3. **Cloud Frontend:** Host the static frontend assets on **Vercel** or **Netlify** (free tiers, perfect for hosting from a subfolder).
+2. **Unified Deployment (Vercel):**
+   - Vercel hosts your static frontend files (`frontend/*`).
+   - Vercel automatically deploys your FastAPI Python backend (`api/index.py`) as serverless functions.
+   - You only have one deployment, one URL, and zero CORS issues!
 
 ---
 
 ## Step 1: Migrate to MongoDB Atlas (Cloud Database)
-Render cannot access your local machine's MongoDB. You need a free cloud database.
+To run your project in the cloud, you need a cloud MongoDB database instead of your local MongoDB.
 
 1. Sign up/log in to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas).
 2. Click **Create** to deploy a new cluster:
@@ -21,7 +23,7 @@ Render cannot access your local machine's MongoDB. You need a free cloud databas
    - Choose a provider (e.g., AWS) and region closest to your users.
 3. Configure Security:
    - Create a **database user** with a username and password (write this down).
-   - Under **Network Access**, select **Add IP Address** and choose **Allow Access From Anywhere** (`0.0.0.0/0`). This ensures Render's servers can connect.
+   - Under **Network Access**, select **Add IP Address** and choose **Allow Access From Anywhere** (`0.0.0.0/0`). This ensures Vercel's serverless functions can connect.
 4. Get your connection string:
    - Go to the Atlas Dashboard -> click **Connect** -> select **Drivers**.
    - Copy the connection string. It will look like this:
@@ -32,58 +34,32 @@ Render cannot access your local machine's MongoDB. You need a free cloud databas
 
 ---
 
-## Step 2: Deploy the FastAPI Backend on Render
-[Render](https://render.com/) is a cloud platform that integrates with GitHub to build and deploy web services.
+## Step 2: Push the Updated Files to GitHub
+We have configured your project with `vercel.json`, `api/index.py`, and updated the URL handling in `frontend/js/app.js` to dynamically support Vercel serverless functions without needing any code edits.
 
-1. Sign up/log in to [Render](https://render.com/).
-2. Click **New +** (top right) -> **Web Service**.
-3. Link your GitHub account and select your `SmartComparison` repository.
-4. Configure your Web Service:
-   - **Name:** `smartcompare-backend`
-   - **Region:** Select a region close to your users.
-   - **Branch:** `main`
-   - **Runtime:** `Python 3`
-   - **Build Command:** `pip install -r backend/requirements.txt`
-   - **Start Command:** `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
-5. Set Environment Variables:
-   - Click on the **Environment** tab.
-   - Add a key `MONGO_URI` and paste your MongoDB connection string from Step 1.
-   - Add a key `DB_NAME` with the value `smartcompare_db`.
-6. Click **Create Web Service**.
-   - Render will build and launch your API. Once running, copy the live URL provided at the top of the Render console (e.g., `https://smartcompare-backend.onrender.com`).
+Let's commit and push these files to your repository:
+```bash
+git add .
+git commit -m "Configure Vercel serverless deployment"
+git push origin main
+```
 
 ---
 
-## Step 3: Update and Deploy the Frontend
-Now, we must point your frontend code to the public URL of your new Render backend.
-
-### 1. Update the Frontend URL
-1. Open `frontend/js/app.js`.
-2. Locate the first line:
-   ```javascript
-   const API_BASE = "http://localhost:8000";
-   ```
-3. Replace it with your public Render URL:
-   ```javascript
-   const API_BASE = "https://smartcompare-backend.onrender.com"; // Your Render URL
-   ```
-4. Commit and push the change to GitHub:
-   ```bash
-   git add frontend/js/app.js
-   git commit -m "Update API endpoint to cloud Render URL"
-   git push origin main
-   ```
-
-### 2. Host static files on Vercel (Simplest & Best for Subfolders)
-Since the frontend is located inside the `frontend` folder rather than the root directory, **Vercel** is the easiest way to deploy:
+## Step 3: Deploy Everything on Vercel
 
 1. Sign up/log in to [Vercel](https://vercel.com/) using your GitHub account.
 2. Click **Add New** -> **Project**.
-3. Select your `SmartComparison` repository.
-4. Under **Configure Project**:
-   - For **Root Directory**, click **Edit** and select the `frontend` folder.
-   - Leave the rest as default (no build settings required as it's static HTML/CSS/JS).
-5. Click **Deploy**.
-   - Vercel will immediately publish your application and give you a public URL (e.g., `https://smart-comparison.vercel.app`).
+3. Select your `SmartComparison` repository from the list.
+4. In the **Configure Project** section:
+   - Leave the **Root Directory** as the repository root `./` (do not change it to `frontend` or `backend`). Vercel will automatically detect `vercel.json` and build both parts!
+5. Expand the **Environment Variables** section and add the following:
+   - **Key:** `MONGO_URI`
+   - **Value:** Paste your MongoDB connection string from Step 1.
+   - **Key:** `DB_NAME`
+   - **Value:** `smartcompare_db`
+6. Click **Deploy**.
+   - Vercel will build your static frontend assets and install the python dependencies for your serverless backend.
+   - Once completed, Vercel will give you a public URL (e.g., `https://smart-comparison.vercel.app`).
 
-Your SmartCompare application is now 100% public, connected to a cloud database, and accessible worldwide!
+Your SmartCompare application is now fully public, connected to a cloud database, and accessible worldwide under a single URL!
