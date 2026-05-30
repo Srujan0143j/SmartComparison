@@ -1,8 +1,10 @@
 import os
+import json
 from pymongo import MongoClient
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.getenv("DB_NAME", "smartcompare_db")
+IS_VERCEL = "VERCEL" in os.environ
 
 client = None
 db = None
@@ -10,6 +12,12 @@ db = None
 def get_db():
     global client, db
     if db is None:
+        # If running on Vercel and no cloud database URI is set, skip connection timeout and use JSON fallback
+        if IS_VERCEL and (not MONGO_URI or "localhost" in MONGO_URI):
+            print("Running on Vercel without cloud MongoDB URI. Falling back to local JSON file.")
+            db = MockDB()
+            return db
+            
         try:
             # Connect with a short timeout to fail fast if local mongo isn't running
             client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=2000)
@@ -19,9 +27,8 @@ def get_db():
             print(f"Connected successfully to MongoDB at {MONGO_URI}, database: {DB_NAME}")
         except Exception as e:
             print(f"Failed to connect to MongoDB: {e}")
-            print("Fallback: Using in-memory mock storage because MongoDB was not reachable.")
-            # We will create a local in-memory fallback so the server doesn't crash 
-            # and runs perfectly even if MongoDB isn't running on the developer machine yet.
+            print("Fallback: Using local products.json file because MongoDB was not reachable.")
+            # We will create a local fallback loaded from products.json
             db = MockDB()
     return db
 
@@ -34,19 +41,7 @@ class MockCollection:
         filter_dict = filter_dict or {}
         results = []
         for doc in self.data:
-            match = True
-            for k, v in filter_dict.items():
-                if k == "$or":
-                    match = any(doc.get(sub_k) == sub_v for or_cond in v for sub_k, sub_v in or_cond.items())
-                elif isinstance(v, dict) and "$regex" in v:
-                    import re
-                    pattern = v["$regex"]
-                    flags = re.IGNORECASE if "i" in v.get("$options", "") else 0
-                    if not re.search(pattern, str(doc.get(k, "")), flags):
-                        match = False
-                elif doc.get(k) != v:
-                    match = False
-            if match:
+            if self._match_doc(doc, filter_dict):
                 results.append(doc)
         return results
 
@@ -75,9 +70,32 @@ class MockCollection:
 
     def _match_doc(self, doc, filter_dict):
         for k, v in filter_dict.items():
-            if doc.get(k) != v:
-                return False
+            if k == "$or":
+                # Any condition in the $or list must match
+                any_match = False
+                for cond in v:
+                    cond_match = True
+                    for cond_k, cond_v in cond.items():
+                        if not self._match_field(doc.get(cond_k), cond_v):
+                            cond_match = False
+                            break
+                    if cond_match:
+                        any_match = True
+                        break
+                if not any_match:
+                    return False
+            else:
+                if not self._match_field(doc.get(k), v):
+                    return False
         return True
+
+    def _match_field(self, field_value, condition):
+        if isinstance(condition, dict) and "$regex" in condition:
+            import re
+            pattern = condition["$regex"]
+            flags = re.IGNORECASE if "i" in condition.get("$options", "") else 0
+            return bool(re.search(pattern, str(field_value or ""), flags))
+        return field_value == condition
 
     def count_documents(self, filter_dict):
         return len(self.find(filter_dict))
@@ -85,8 +103,24 @@ class MockCollection:
 class MockDB:
     def __init__(self):
         self.collections = {}
+        # Prepopulate products collection from products.json if it exists
+        products_col = MockCollection("products")
+        try:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            json_path = os.path.join(current_dir, "products.json")
+            if os.path.exists(json_path):
+                with open(json_path, "r", encoding="utf-8") as f:
+                    products_col.data = json.load(f)
+                print(f"Fallback database: Loaded {len(products_col.data)} products from local JSON file.")
+            else:
+                print("Fallback warning: products.json file not found.")
+        except Exception as e:
+            print(f"Fallback warning: Error loading products.json: {e}")
+        
+        self.collections["products"] = products_col
 
     def __getitem__(self, name):
         if name not in self.collections:
             self.collections[name] = MockCollection(name)
         return self.collections[name]
+
