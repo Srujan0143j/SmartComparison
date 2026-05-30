@@ -224,10 +224,20 @@ CATEGORY_NOUNS = {
 }
 
 def generate_store_url(source: str, product_name: str, category: str) -> str:
-    # Get positive category noun to guide search query and avoid cases/covers
+    # Use clean product name for Google site searches to avoid making queries too restrictive
+    if source in ["Croma", "Reliance Digital", "Tata Cliq", "Vijay Sales"]:
+        query_param = product_name.replace(" ", "+")
+        if source == "Croma":
+            return f"https://www.google.com/search?q=site:croma.com+{query_param}"
+        elif source == "Reliance Digital":
+            return f"https://www.google.com/search?q=site:reliancedigital.in+{query_param}"
+        elif source == "Tata Cliq":
+            return f"https://www.google.com/search?q=site:tatacliq.com+{query_param}"
+        elif source == "Vijay Sales":
+            return f"https://www.google.com/search?q=site:vijaysales.com+{query_param}"
+
+    # For direct merchant searches (Amazon/Flipkart), construct clean query with positive category noun
     noun = CATEGORY_NOUNS.get(category, "")
-    
-    # Construct clean query with positive noun to ensure actual product matches (guides search engines)
     clean_query = product_name
     if noun and noun.lower() not in product_name.lower():
         clean_query = f"{product_name} {noun}"
@@ -238,14 +248,6 @@ def generate_store_url(source: str, product_name: str, category: str) -> str:
         return f"https://www.amazon.in/s?k={query_param}"
     elif source == "Flipkart":
         return f"https://www.flipkart.com/search?q={query_param}"
-    elif source == "Croma":
-        return f"https://www.google.com/search?q=site:croma.com+{query_param}"
-    elif source == "Reliance Digital":
-        return f"https://www.google.com/search?q=site:reliancedigital.in+{query_param}"
-    elif source == "Tata Cliq":
-        return f"https://www.google.com/search?q=site:tatacliq.com+{query_param}"
-    elif source == "Vijay Sales":
-        return f"https://www.google.com/search?q=site:vijaysales.com+{query_param}"
         
     return f"https://www.google.com/search?q={query_param}"
 
