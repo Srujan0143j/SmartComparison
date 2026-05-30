@@ -208,7 +208,7 @@ REVIEW_POOL = [
     {"rating": 1.0, "title": "Waste of money", "text": "Total failure. It stopped working after one week. The screen has glitch issues and the packaging was damaged when it arrived. Returning immediately."}
 ]
 
-SOURCES = ["Amazon", "Flipkart", "Croma", "Reliance Digital", "Tata Cliq", "Vijay Sales"]
+SOURCES = ["Amazon", "Flipkart", "Croma", "Reliance Digital", "Vijay Sales"]
 
 CATEGORY_NOUNS = {
     "Smartphones": "phone",
@@ -225,14 +225,12 @@ CATEGORY_NOUNS = {
 
 def generate_store_url(source: str, product_name: str, category: str) -> str:
     # Use clean product name for Google site searches to avoid making queries too restrictive
-    if source in ["Croma", "Reliance Digital", "Tata Cliq", "Vijay Sales"]:
+    if source in ["Croma", "Reliance Digital", "Vijay Sales"]:
         query_param = product_name.replace(" ", "+")
         if source == "Croma":
             return f"https://www.google.com/search?q=site:croma.com+{query_param}"
         elif source == "Reliance Digital":
             return f"https://www.google.com/search?q=site:reliancedigital.in+{query_param}"
-        elif source == "Tata Cliq":
-            return f"https://www.google.com/search?q=site:tatacliq.com+{query_param}"
         elif source == "Vijay Sales":
             return f"https://www.google.com/search?q=site:vijaysales.com+{query_param}"
 
