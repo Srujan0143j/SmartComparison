@@ -1,5 +1,5 @@
 const API_BASE = window.location.protocol === "file:" || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-    ? "http://localhost:8000"
+    ? "http://127.0.0.1:8000"
     : window.location.origin;
 
 // App state
@@ -213,7 +213,7 @@ function renderResults(products) {
                 <div class="card-title">${p.name}</div>
                 <div class="rating-row">
                     <div class="stars">${renderStars(p.avg_rating)}</div>
-                    <span class="reviews-cnt">(${p.total_reviews.toLocaleString()} reviews)</span>
+                    <span class="reviews-cnt">(${(p.total_reviews || 0).toLocaleString()} reviews)</span>
                 </div>
 
                 
@@ -263,10 +263,11 @@ function renderResults(products) {
 }
 
 function renderStars(rating) {
-    const clampedRating = Math.max(0, Math.min(5, rating));
-    const full = Math.floor(clampedRating);
+    const parsed = parseFloat(rating);
+    const clampedRating = Math.max(0, Math.min(5, isNaN(parsed) ? 0 : parsed));
+    const full = Math.floor(clampedRating) || 0;
     const half = clampedRating % 1 >= 0.5 ? 1 : 0;
-    const empty = Math.max(0, 5 - full - half);
+    const empty = Math.max(0, 5 - full - half) || 0;
     
     return `${'<i class="fa-solid fa-star"></i>'.repeat(full)}${half ? '<i class="fa-solid fa-star-half-stroke"></i>' : ''}${'<i class="fa-regular fa-star"></i>'.repeat(empty)}`;
 }
@@ -555,15 +556,15 @@ async function openCrossModal() {
                 </tr>
                 <tr>
                     <td>Store Rating</td>
-                    ${models.map(m => `<td>${m.rating} / 5.0 ⭐</td>`).join("")}
+                    ${models.map(m => `<td>${m.rating ? m.rating + ' / 5.0 ⭐' : 'N/A'}</td>`).join("")}
                 </tr>
                 <tr>
                     <td>Reviews Analyzed</td>
-                    ${models.map(m => `<td>${m.review_count.toLocaleString()}</td>`).join("")}
+                    ${models.map(m => `<td>${(m.review_count || 0).toLocaleString()}</td>`).join("")}
                 </tr>
                 <tr>
                     <td>NLP Sentiment Index</td>
-                    ${models.map(m => `<td>${Math.round(m.ml_sentiment * 100) / 100}</td>`).join("")}
+                    ${models.map(m => `<td>${Math.round((m.ml_sentiment || 0) * 100) / 100}</td>`).join("")}
                 </tr>
                 <tr>
                     <td class="highlight">ML Final Rating</td>
