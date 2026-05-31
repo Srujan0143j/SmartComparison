@@ -411,20 +411,28 @@ def search_products(
             p_specs = p.get("specifications", {})
             spec_query = get_specific_search_query(name, p_category, p_specs)
             
-            if p["source"] in ["Amazon", "Flipkart"] and p.get("url") and "google.com/search" not in p["url"]:
+            # Use direct URL if available, else generate store search URL
+            if p["source"] in ["Amazon", "Flipkart"] and p.get("url") and "google.com" not in p["url"] and "amazon.in/s?k=" not in p["url"] and "flipkart.com/search?q=" not in p["url"]:
                 url_to_use = p["url"]
             else:
                 from backend.services.scraper import generate_store_url
                 url_to_use = generate_store_url(p["source"], spec_query, p_category)
             
+            # Exclude Croma, Reliance, Vijay Sales from having a numeric price (to keep ranges accurate)
+            price_to_use = p["price"]
+            if p["source"] not in ["Amazon", "Flipkart"]:
+                price_to_use = None
+                
             listing_info = {
                 "source": p["source"],
-                "price": p["price"],
+                "price": price_to_use,
                 "url": url_to_use,
                 "rating": p["rating"],
                 "ml_score": p["ml_score"] or 80.0,
                 "ml_label": p["ml_label"] or "Recommended"
             }
+            
+            has_price = price_to_use is not None
             
             if name not in grouped_models:
                 grouped_models[name] = {
@@ -432,8 +440,8 @@ def search_products(
                     "brand": p["brand"],
                     "category": p["category"],
                     "image_url": p["image_url"],
-                    "min_price": p["price"],
-                    "max_price": p["price"],
+                    "min_price": price_to_use if has_price else None,
+                    "max_price": price_to_use if has_price else None,
                     "avg_rating": p["rating"],
                     "total_reviews": p["review_count"],
                     "stores": [p["source"]],
@@ -441,30 +449,40 @@ def search_products(
                     "ml_label": p["ml_label"] or "Recommended",
                     "specifications": p["specifications"],
                     
-                    # Track best deal (highest ML score)
-                    "best_deal_store": p["source"],
-                    "best_deal_price": p["price"],
+                    # Track best deal (highest ML score with price)
+                    "best_deal_store": p["source"] if has_price else None,
+                    "best_deal_price": price_to_use if has_price else None,
                     "best_deal_url": url_to_use,
-                    "best_deal_score": p["ml_score"] or 80.0,
+                    "best_deal_score": p["ml_score"] if has_price else 0,
                     "listings": [listing_info]
                 }
             else:
                 gm = grouped_models[name]
-                gm["min_price"] = min(gm["min_price"], p["price"])
-                gm["max_price"] = max(gm["max_price"], p["price"])
+                if has_price:
+                    if gm["min_price"] is None or gm["min_price"] == 0:
+                        gm["min_price"] = price_to_use
+                    else:
+                        gm["min_price"] = min(gm["min_price"], price_to_use)
+                        
+                    if gm["max_price"] is None or gm["max_price"] == 0:
+                        gm["max_price"] = price_to_use
+                    else:
+                        gm["max_price"] = max(gm["max_price"], price_to_use)
+                        
                 gm["avg_rating"] = round((gm["avg_rating"] + p["rating"]) / 2.0, 1)
                 gm["total_reviews"] += p["review_count"]
                 if p["source"] not in gm["stores"]:
                     gm["stores"].append(p["source"])
                 gm["listings"].append(listing_info)
                 
-                # Update best deal if this listing has a higher ML score
-                curr_ml = p["ml_score"] or 80.0
-                if curr_ml > gm["best_deal_score"]:
-                    gm["best_deal_store"] = p["source"]
-                    gm["best_deal_price"] = p["price"]
-                    gm["best_deal_url"] = url_to_use
-                    gm["best_deal_score"] = curr_ml
+                # Update best deal if this listing has a higher ML score and a valid price
+                if has_price:
+                    curr_ml = p["ml_score"] or 80.0
+                    if gm["best_deal_store"] is None or curr_ml > gm["best_deal_score"]:
+                        gm["best_deal_store"] = p["source"]
+                        gm["best_deal_price"] = price_to_use
+                        gm["best_deal_url"] = url_to_use
+                        gm["best_deal_score"] = curr_ml
                     
         return {"results": list(grouped_models.values()), "raw_count": len(results)}
     except Exception as e:
@@ -579,8 +597,22 @@ def compare_stores(name: str = Query(..., description="Exact name of the product
         # Apply 10-minute caching checks and fetch live updates if needed
         update_prices_for_results(listings)
 
+        # Clean/generate URLs on the fly for all listings
+        from backend.services.scraper import generate_store_url
+        for l in listings:
+            spec_query = get_specific_search_query(l["name"], l["category"], l.get("specifications", {}))
+            if l["source"] in ["Amazon", "Flipkart"] and l.get("url") and "google.com" not in l["url"] and "amazon.in/s?k=" not in l["url"] and "flipkart.com/search?q=" not in l["url"]:
+                pass
+            else:
+                l["url"] = generate_store_url(l["source"], spec_query, l["category"])
+
         # Analyze using ML engine with the updated real-time prices
         compared_listings = ml_engine.score_and_recommend(listings)
+        
+        # Exclude simulated store prices from leakage
+        for l in compared_listings:
+            if l["source"] not in ["Amazon", "Flipkart"]:
+                l["price"] = None
         
         # Sort by ML score (descending)
         compared_listings.sort(key=lambda x: x["ml_score"], reverse=True)
@@ -610,13 +642,38 @@ def compare_models(names: str = Query(..., description="Comma separated list of 
             listings = [serialize_doc(doc) for doc in cursor]
             
             if listings:
-                prices = [l["price"] for l in listings if "price" in l]
+                # Clean/generate URLs on the fly for all listings
+                from backend.services.scraper import generate_store_url
+                for l in listings:
+                    spec_query = get_specific_search_query(l["name"], l["category"], l.get("specifications", {}))
+                    if l["source"] in ["Amazon", "Flipkart"] and l.get("url") and "google.com" not in l["url"] and "amazon.in/s?k=" not in l["url"] and "flipkart.com/search?q=" not in l["url"]:
+                        pass
+                    else:
+                        l["url"] = generate_store_url(l["source"], spec_query, l["category"])
+                
+                # Exclude simulated stores from price ranges
+                prices = [l["price"] for l in listings if "price" in l and l["source"] in ["Amazon", "Flipkart"] and l["price"] is not None]
+                if not prices:
+                    prices = [l["price"] for l in listings if "price" in l and l["price"] is not None]
                 min_p = min(prices) if prices else 0
                 max_p = max(prices) if prices else 0
                 
                 scored = ml_engine.score_and_recommend(listings)
-                scored.sort(key=lambda x: x["ml_score"], reverse=True)
-                best_listing = scored[0]
+                
+                # Representative store must be Amazon or Flipkart
+                real_listings = [l for l in scored if l["source"] in ["Amazon", "Flipkart"]]
+                if real_listings:
+                    real_listings.sort(key=lambda x: x["ml_score"], reverse=True)
+                    best_listing = real_listings[0]
+                else:
+                    scored.sort(key=lambda x: x["ml_score"], reverse=True)
+                    best_listing = scored[0]
+                
+                # Exclude simulated store prices from leakage in final listings
+                for l in scored:
+                    if l["source"] not in ["Amazon", "Flipkart"]:
+                        l["price"] = None
+                        
                 best_listing["min_price"] = min_p
                 best_listing["max_price"] = max_p
                 comparison_results.append(best_listing) # Get top store listing for that model

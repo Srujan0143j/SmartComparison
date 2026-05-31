@@ -218,7 +218,9 @@ function renderResults(products) {
                 <div class="price-row" style="margin-bottom: 0.75rem;">
                     <div>
                         <div class="price-range-label">Price range</div>
-                        <div class="price-range" style="font-size: 1.125rem;">₹${p.min_price.toLocaleString()} - ₹${p.max_price.toLocaleString()}</div>
+                        <div class="price-range" style="font-size: 1.125rem;">
+                            ${formatPriceRange(p.min_price, p.max_price)}
+                        </div>
                     </div>
                 </div>
                 
@@ -274,6 +276,20 @@ function renderStars(rating) {
     const empty = Math.max(0, 5 - full - half);
     
     return `${'<i class="fa-solid fa-star"></i>'.repeat(full)}${half ? '<i class="fa-solid fa-star-half-stroke"></i>' : ''}${'<i class="fa-regular fa-star"></i>'.repeat(empty)}`;
+}
+
+function formatPriceRange(minPrice, maxPrice) {
+    if (!minPrice || minPrice === 0) {
+        if (!maxPrice || maxPrice === 0) return "Check Stores";
+        return `₹${maxPrice.toLocaleString()}`;
+    }
+    if (!maxPrice || maxPrice === 0) {
+        return `₹${minPrice.toLocaleString()}`;
+    }
+    if (minPrice === maxPrice) {
+        return `₹${minPrice.toLocaleString()}`;
+    }
+    return `₹${minPrice.toLocaleString()} - ₹${maxPrice.toLocaleString()}`;
 }
 
 // Compare List State Management
@@ -541,7 +557,7 @@ async function openCrossModal() {
             <tbody>
                 <tr>
                     <td class="highlight">Accurate Price Range</td>
-                    ${models.map(m => `<td class="highlight" style="font-size: 1.125rem; font-weight: 700; color: var(--success);">₹${m.min_price.toLocaleString()} - ₹${m.max_price.toLocaleString()}</td>`).join("")}
+                    ${models.map(m => `<td class="highlight" style="font-size: 1.125rem; font-weight: 700; color: var(--success);">${formatPriceRange(m.min_price, m.max_price)}</td>`).join("")}
                 </tr>
                 <tr>
                     <td>Brand</td>

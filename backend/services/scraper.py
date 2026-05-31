@@ -227,23 +227,18 @@ def generate_store_url(source: str, product_name: str, category: str) -> str:
     # Build clean query parameter from product name and specifications
     query_param = product_name.replace(" ", "+")
     
-    # Determine the restricted search domain based on the merchant source
     if source == "Amazon":
-        domain = "amazon.in"
+        return f"https://www.amazon.in/s?k={query_param}"
     elif source == "Flipkart":
-        domain = "flipkart.com"
+        return f"https://www.flipkart.com/search?q={query_param}"
     elif source == "Croma":
-        domain = "croma.com"
+        return f"https://www.croma.com/search/?text={query_param}"
     elif source == "Reliance Digital":
-        domain = "reliancedigital.in"
+        return f"https://www.reliancedigital.in/search?q={query_param}"
     elif source == "Vijay Sales":
-        domain = "vijaysales.com"
+        return f"https://www.vijaysales.com/search?q={query_param}"
     else:
-        domain = ""
-        
-    if domain:
-        return f"https://www.google.com/search?q=site:{domain}+{query_param}"
-    return f"https://www.google.com/search?q={query_param}"
+        return f"https://www.google.com/search?q={query_param}"
 
 
 def generate_specifications(category: str) -> Dict[str, Any]:
