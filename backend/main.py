@@ -131,8 +131,8 @@ def update_single_product_live(name: str, category: str, specs: dict, listings: 
     flipkart_prices = []
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        future_amazon = executor.submit(scrape_amazon_live, specific_search_query)
-        future_flipkart = executor.submit(scrape_flipkart_live, specific_search_query)
+        future_amazon = executor.submit(scrape_amazon_live, name, specs, category)
+        future_flipkart = executor.submit(scrape_flipkart_live, name, specs, category)
         
         try:
             amazon_prices = future_amazon.result(timeout=3.5)
@@ -338,10 +338,12 @@ def search_products(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def scrape_flipkart_live(product_name: str):
+def scrape_flipkart_live(product_name: str, specs: dict, category: str = ""):
     import requests
     import re
-    url = f"https://www.flipkart.com/search?q={product_name.replace(' ', '+')}"
+    
+    specific_search_query = get_specific_search_query(product_name, category, specs)
+    url = f"https://www.flipkart.com/search?q={specific_search_query.replace(' ', '+')}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9"
@@ -350,29 +352,51 @@ def scrape_flipkart_live(product_name: str):
         r = requests.get(url, headers=headers, timeout=4)
         if r.status_code != 200:
             return []
-        matches = re.findall(r'class="[^"]*hZ3P6w[^"]*"[^>]*>[^₹]*₹([0-9,]+)', r.text)
+            
         prices = []
+        matches = list(re.finditer(r'alt="([^"]+)"', r.text))
+        for m in matches:
+            title = m.group(1)
+            words = product_name.lower().split()
+            if all(w in title.lower() for w in words):
+                storage = str(specs.get("Storage", "")).lower().replace(" ", "")
+                storage_num = re.sub(r'[^\d]', '', storage)
+                ram = str(specs.get("RAM", "")).lower().replace(" ", "")
+                ram_num = re.sub(r'[^\d]', '', ram)
+                
+                if storage_num and storage_num not in title.lower().replace(" ", ""):
+                    continue
+                    
+                snippet = r.text[m.end() : m.end() + 2500]
+                price_match = re.search(r'class="[^"]*hZ3P6w[^"]*"[^>]*>[^₹]*₹([0-9,]+)', snippet)
+                if not price_match:
+                    price_match = re.search(r'₹([0-9,]+)', snippet)
+                    
+                if price_match:
+                    val = re.sub(r'[^\d]', '', price_match.group(1))
+                    if val:
+                        prices.append(int(val))
+                        
+        if prices:
+            return prices
+            
+        # Fallback to general first price matching class
+        matches = re.findall(r'class="[^"]*hZ3P6w[^"]*"[^>]*>[^₹]*₹([0-9,]+)', r.text)
         for m in matches:
             val = re.sub(r'[^\d]', '', m)
             if val:
                 prices.append(int(val))
-        if not prices:
-            raw_matches = re.findall(r'₹([0-9,]+)', r.text)
-            for m in raw_matches:
-                val = re.sub(r'[^\d]', '', m)
-                if val:
-                    p_val = int(val)
-                    if p_val not in [10000, 15000, 20000, 30000, 40000, 50000] and p_val > 500:
-                        prices.append(p_val)
         return prices
     except Exception as e:
         print(f"Error scraping Flipkart live: {e}")
     return []
 
-def scrape_amazon_live(product_name: str):
+def scrape_amazon_live(product_name: str, specs: dict, category: str = ""):
     import requests
     import re
-    url = f"https://www.amazon.in/s?k={product_name.replace(' ', '+')}"
+    
+    specific_search_query = get_specific_search_query(product_name, category, specs)
+    url = f"https://www.amazon.in/s?k={specific_search_query.replace(' ', '+')}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -382,8 +406,36 @@ def scrape_amazon_live(product_name: str):
         r = requests.get(url, headers=headers, timeout=4)
         if r.status_code != 200 or "api-services-support@amazon.com" in r.text:
             return []
-        matches = re.findall(r'class="a-price-whole">([0-9,]+)', r.text)
+            
         prices = []
+        chunks = r.text.split('data-component-type="s-search-result"')
+        for chunk in chunks[1:]:
+            title_match = re.search(r'class="a-size-[^"]*a-text-normal"[^>]*>([^<]+)', chunk)
+            if not title_match:
+                title_match = re.search(r'class="[^"]*a-text-normal"[^>]*>([^<]+)', chunk)
+                
+            price_match = re.search(r'class="a-price-whole">([0-9,]+)', chunk)
+            
+            if title_match and price_match:
+                title = title_match.group(1)
+                price = int(re.sub(r'[^\d]', '', price_match.group(1)))
+                
+                words = product_name.lower().split()
+                if all(w in title.lower() for w in words):
+                    storage = str(specs.get("Storage", "")).lower().replace(" ", "")
+                    storage_num = re.sub(r'[^\d]', '', storage)
+                    ram = str(specs.get("RAM", "")).lower().replace(" ", "")
+                    ram_num = re.sub(r'[^\d]', '', ram)
+                    
+                    if storage_num and storage_num not in title.lower().replace(" ", ""):
+                        continue
+                        
+                    prices.append(price)
+                    
+        if prices:
+            return prices
+            
+        matches = re.findall(r'class="a-price-whole">([0-9,]+)', r.text)
         for m in matches:
             val = re.sub(r'[^\d]', '', m)
             if val:

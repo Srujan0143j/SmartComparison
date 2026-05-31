@@ -224,29 +224,25 @@ CATEGORY_NOUNS = {
 }
 
 def generate_store_url(source: str, product_name: str, category: str) -> str:
-    # Use clean product name for Google site searches to avoid making queries too restrictive
-    if source in ["Croma", "Reliance Digital", "Vijay Sales"]:
-        query_param = product_name.replace(" ", "+")
-        if source == "Croma":
-            return f"https://www.google.com/search?q=site:croma.com+{query_param}"
-        elif source == "Reliance Digital":
-            return f"https://www.google.com/search?q=site:reliancedigital.in+{query_param}"
-        elif source == "Vijay Sales":
-            return f"https://www.google.com/search?q=site:vijaysales.com+{query_param}"
-
-    # For direct merchant searches (Amazon/Flipkart), construct clean query with positive category noun
-    noun = CATEGORY_NOUNS.get(category, "")
-    clean_query = product_name
-    if noun and noun.lower() not in product_name.lower():
-        clean_query = f"{product_name} {noun}"
-        
-    query_param = clean_query.replace(" ", "+")
+    # Build clean query parameter from product name and specifications
+    query_param = product_name.replace(" ", "+")
     
+    # Determine the restricted search domain based on the merchant source
     if source == "Amazon":
-        return f"https://www.amazon.in/s?k={query_param}"
+        domain = "amazon.in"
     elif source == "Flipkart":
-        return f"https://www.flipkart.com/search?q={query_param}"
+        domain = "flipkart.com"
+    elif source == "Croma":
+        domain = "croma.com"
+    elif source == "Reliance Digital":
+        domain = "reliancedigital.in"
+    elif source == "Vijay Sales":
+        domain = "vijaysales.com"
+    else:
+        domain = ""
         
+    if domain:
+        return f"https://www.google.com/search?q=site:{domain}+{query_param}"
     return f"https://www.google.com/search?q={query_param}"
 
 
