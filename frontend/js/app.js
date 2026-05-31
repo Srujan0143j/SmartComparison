@@ -215,18 +215,27 @@ function renderResults(products) {
                     <div class="stars">${renderStars(p.avg_rating)}</div>
                     <span class="reviews-cnt">(${p.total_reviews.toLocaleString()} reviews)</span>
                 </div>
-                <div class="price-row">
+                <div class="price-row" style="margin-bottom: 0.75rem;">
                     <div>
                         <div class="price-range-label">Price range</div>
                         <div class="price-range" style="font-size: 1.125rem;">₹${p.min_price.toLocaleString()} - ₹${p.max_price.toLocaleString()}</div>
                     </div>
                 </div>
                 
+                <!-- Specifications List -->
+                <div class="card-specs" style="margin-bottom: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; font-size: 0.75rem; background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.04); padding: 0.5rem; border-radius: var(--radius-sm);">
+                    ${Object.entries(p.specifications || {}).map(([key, val]) => `
+                        <div style="color: var(--text-muted); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${key}: ${val}">
+                            <span style="font-weight: 600; color: var(--text-main);">${key}:</span> ${val}
+                        </div>
+                    `).join("")}
+                </div>
+                
                 <!-- Direct Website Comparison Table -->
                 <div class="card-price-comparison" style="margin-bottom: 1.25rem; background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); overflow: hidden;">
                     <div style="font-size: 0.75rem; font-weight: 700; padding: 0.4rem 0.6rem; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between;">
-                        <span>Website Comparison</span>
-                        <span style="color: var(--success); font-weight: 800;"><i class="fa-solid fa-arrow-down-wide-short"></i> Price</span>
+                        <span>Store Listings</span>
+                        <span style="color: var(--accent); font-weight: 800;"><i class="fa-solid fa-cart-shopping"></i> Visit</span>
                     </div>
                     <div style="max-height: 140px; overflow-y: auto;">
                         ${p.listings.map(l => `
@@ -236,8 +245,7 @@ function renderResults(products) {
                                     ${l.source === p.best_deal_store ? '<span style="font-size: 0.65rem; padding: 0.05rem 0.2rem; background: var(--success-light); color: var(--success); border-radius: 3px; font-weight: 700;">Best</span>' : ''}
                                 </span>
                                 <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                    <strong style="color: var(--text-main);">₹${l.price.toLocaleString()}</strong>
-                                    <a href="${l.url}" target="_blank" style="color: var(--accent); font-size: 0.8125rem; display: flex; align-items: center;" title="Buy on ${l.source}"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                                    <a href="${l.url}" target="_blank" style="color: var(--accent); font-size: 0.75rem; display: flex; align-items: center; gap: 0.25rem; background: rgba(99, 102, 241, 0.15); padding: 0.2rem 0.45rem; border-radius: 3px; border: 1px solid rgba(99, 102, 241, 0.3); font-weight: 600; text-decoration: none;" title="Buy on ${l.source}">Visit <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.65rem;"></i></a>
                                 </div>
                             </div>
                         `).join("")}
@@ -357,7 +365,6 @@ async function openStoreModal(encodedName) {
                     <span class="listing-store-name"><i class="fa-solid fa-store" style="color: var(--accent);"></i> ${listing.source}</span>
                     <span style="font-size: 0.8125rem; color: var(--text-muted);">Rating: ${listing.rating} ⭐</span>
                 </div>
-                <div class="listing-price">₹${listing.price.toLocaleString()}</div>
                 <div class="listing-ml-block">
                     <div class="score-radial" data-score="${percent}" style="--percentage: ${percent}%"></div>
                     <div style="font-size: 0.8125rem;">
@@ -475,14 +482,6 @@ function drawStoreChart(listings) {
                     borderColor: "rgb(99, 102, 241)",
                     borderWidth: 1,
                     borderRadius: 4
-                },
-                {
-                    label: "Price (k INR)",
-                    data: pricesScaled,
-                    backgroundColor: "rgba(16, 185, 129, 0.7)",
-                    borderColor: "rgb(16, 185, 129)",
-                    borderWidth: 1,
-                    borderRadius: 4
                 }
             ]
         },
@@ -541,8 +540,8 @@ async function openCrossModal() {
             </thead>
             <tbody>
                 <tr>
-                    <td class="highlight">Best Offer Price</td>
-                    ${models.map(m => `<td class="highlight" style="font-size: 1.125rem; font-weight: 700; color: var(--success);">₹${m.price.toLocaleString()} <span style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted);">via ${m.source}</span></td>`).join("")}
+                    <td class="highlight">Accurate Price Range</td>
+                    ${models.map(m => `<td class="highlight" style="font-size: 1.125rem; font-weight: 700; color: var(--success);">₹${m.min_price.toLocaleString()} - ₹${m.max_price.toLocaleString()}</td>`).join("")}
                 </tr>
                 <tr>
                     <td>Brand</td>

@@ -610,9 +610,16 @@ def compare_models(names: str = Query(..., description="Comma separated list of 
             listings = [serialize_doc(doc) for doc in cursor]
             
             if listings:
+                prices = [l["price"] for l in listings if "price" in l]
+                min_p = min(prices) if prices else 0
+                max_p = max(prices) if prices else 0
+                
                 scored = ml_engine.score_and_recommend(listings)
                 scored.sort(key=lambda x: x["ml_score"], reverse=True)
-                comparison_results.append(scored[0]) # Get top store listing for that model
+                best_listing = scored[0]
+                best_listing["min_price"] = min_p
+                best_listing["max_price"] = max_p
+                comparison_results.append(best_listing) # Get top store listing for that model
                 
         # Re-run ML engine on the cross-model choices to compare them together!
         final_comparison = ml_engine.score_and_recommend(comparison_results)
