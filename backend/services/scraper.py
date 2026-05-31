@@ -228,17 +228,21 @@ def generate_store_url(source: str, product_name: str, category: str) -> str:
     query_param = product_name.replace(" ", "+")
     
     if source == "Amazon":
-        return f"https://www.amazon.in/s?k={query_param}"
+        domain = "amazon.in"
     elif source == "Flipkart":
-        return f"https://www.flipkart.com/search?q={query_param}"
+        domain = "flipkart.com"
     elif source == "Croma":
-        return f"https://www.croma.com/search/?text={query_param}"
+        domain = "croma.com"
     elif source == "Reliance Digital":
-        return f"https://www.reliancedigital.in/search?q={query_param}"
+        domain = "reliancedigital.in"
     elif source == "Vijay Sales":
-        return f"https://www.vijaysales.com/search?q={query_param}"
+        domain = "vijaysales.com"
     else:
-        return f"https://www.google.com/search?q={query_param}"
+        domain = ""
+        
+    if domain:
+        return f"https://www.google.com/search?q=site:{domain}+{query_param}"
+    return f"https://www.google.com/search?q={query_param}"
 
 
 def generate_specifications(category: str) -> Dict[str, Any]:

@@ -411,12 +411,9 @@ def search_products(
             p_specs = p.get("specifications", {})
             spec_query = get_specific_search_query(name, p_category, p_specs)
             
-            # Use direct URL if available, else generate store search URL
-            if p["source"] in ["Amazon", "Flipkart"] and p.get("url") and "google.com" not in p["url"] and "amazon.in/s?k=" not in p["url"] and "flipkart.com/search?q=" not in p["url"]:
-                url_to_use = p["url"]
-            else:
-                from backend.services.scraper import generate_store_url
-                url_to_use = generate_store_url(p["source"], spec_query, p_category)
+            # Always generate Google site search URL
+            from backend.services.scraper import generate_store_url
+            url_to_use = generate_store_url(p["source"], spec_query, p_category)
             
             # Exclude Croma, Reliance, Vijay Sales from having a numeric price (to keep ranges accurate)
             price_to_use = p["price"]
@@ -601,10 +598,7 @@ def compare_stores(name: str = Query(..., description="Exact name of the product
         from backend.services.scraper import generate_store_url
         for l in listings:
             spec_query = get_specific_search_query(l["name"], l["category"], l.get("specifications", {}))
-            if l["source"] in ["Amazon", "Flipkart"] and l.get("url") and "google.com" not in l["url"] and "amazon.in/s?k=" not in l["url"] and "flipkart.com/search?q=" not in l["url"]:
-                pass
-            else:
-                l["url"] = generate_store_url(l["source"], spec_query, l["category"])
+            l["url"] = generate_store_url(l["source"], spec_query, l["category"])
 
         # Analyze using ML engine with the updated real-time prices
         compared_listings = ml_engine.score_and_recommend(listings)
@@ -646,10 +640,7 @@ def compare_models(names: str = Query(..., description="Comma separated list of 
                 from backend.services.scraper import generate_store_url
                 for l in listings:
                     spec_query = get_specific_search_query(l["name"], l["category"], l.get("specifications", {}))
-                    if l["source"] in ["Amazon", "Flipkart"] and l.get("url") and "google.com" not in l["url"] and "amazon.in/s?k=" not in l["url"] and "flipkart.com/search?q=" not in l["url"]:
-                        pass
-                    else:
-                        l["url"] = generate_store_url(l["source"], spec_query, l["category"])
+                    l["url"] = generate_store_url(l["source"], spec_query, l["category"])
                 
                 # Exclude simulated stores from price ranges
                 prices = [l["price"] for l in listings if "price" in l and l["source"] in ["Amazon", "Flipkart"] and l["price"] is not None]

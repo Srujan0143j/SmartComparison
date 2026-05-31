@@ -215,14 +215,7 @@ function renderResults(products) {
                     <div class="stars">${renderStars(p.avg_rating)}</div>
                     <span class="reviews-cnt">(${p.total_reviews.toLocaleString()} reviews)</span>
                 </div>
-                <div class="price-row" style="margin-bottom: 0.75rem;">
-                    <div>
-                        <div class="price-range-label">Price range</div>
-                        <div class="price-range" style="font-size: 1.125rem;">
-                            ${formatPriceRange(p.min_price, p.max_price)}
-                        </div>
-                    </div>
-                </div>
+
                 
                 <!-- Specifications List -->
                 <div class="card-specs" style="margin-bottom: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; font-size: 0.75rem; background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.04); padding: 0.5rem; border-radius: var(--radius-sm);">
@@ -555,10 +548,7 @@ async function openCrossModal() {
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td class="highlight">Accurate Price Range</td>
-                    ${models.map(m => `<td class="highlight" style="font-size: 1.125rem; font-weight: 700; color: var(--success);">${formatPriceRange(m.min_price, m.max_price)}</td>`).join("")}
-                </tr>
+
                 <tr>
                     <td>Brand</td>
                     ${models.map(m => `<td>${m.brand}</td>`).join("")}
@@ -657,11 +647,7 @@ function drawCrossChart(models) {
         // 2. Sentiment score (scaled 0 to 100)
         const d_sentiment = ((m.ml_sentiment + 1) / 2) * 100;
         
-        // 3. Price Value index (the cheaper, the higher the index - we invert relative to max price in selection)
-        const maxPrice = Math.max(...models.map(x => x.price));
-        const d_price_index = maxPrice > 0 ? (1.0 - (m.price / maxPrice)) * 100 : 100;
-        
-        // 4. ML composite score
+        // 3. ML composite score
         const d_ml = m.ml_score;
         
         const colors = [
@@ -674,7 +660,7 @@ function drawCrossChart(models) {
         
         return {
             label: m.name,
-            data: [d_rating, d_sentiment, d_price_index, d_ml],
+            data: [d_rating, d_sentiment, d_ml],
             backgroundColor: color.fill,
             borderColor: color.border,
             pointBackgroundColor: color.border,
@@ -685,7 +671,7 @@ function drawCrossChart(models) {
     crossChartInstance = new Chart(ctx, {
         type: "radar",
         data: {
-            labels: ["Rating Quotient", "Review Sentiment", "Price Advantage", "Value Score"],
+            labels: ["Rating Quotient", "Review Sentiment", "Value Score"],
             datasets: datasets
         },
         options: {
