@@ -115,6 +115,137 @@ def get_specific_search_query(name: str, category: str, specs: dict) -> str:
             
     return " ".join(query_parts)
 
+def update_single_product_live(name: str, category: str, specs: dict, listings: list):
+    import datetime
+    from bson import ObjectId
+    
+    now = datetime.datetime.utcnow()
+    specific_search_query = get_specific_search_query(name, category, specs)
+    
+    # Get base price from database listings as reference
+    base_db_price = min(l["price"] for l in listings)
+    
+    # Scrape Flipkart and Amazon live concurrently
+    import concurrent.futures
+    amazon_prices = []
+    flipkart_prices = []
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        future_amazon = executor.submit(scrape_amazon_live, specific_search_query)
+        future_flipkart = executor.submit(scrape_flipkart_live, specific_search_query)
+        
+        try:
+            amazon_prices = future_amazon.result(timeout=3.5)
+        except Exception as e:
+            print(f"Amazon live scrape failed for '{name}': {e}")
+        try:
+            flipkart_prices = future_flipkart.result(timeout=3.5)
+        except Exception as e:
+            print(f"Flipkart live scrape failed for '{name}': {e}")
+            
+    amazon_price = filter_realistic_price(amazon_prices, base_db_price)
+    flipkart_price = filter_realistic_price(flipkart_prices, base_db_price)
+    
+    ref_price = None
+    if amazon_price:
+        ref_price = amazon_price
+    elif flipkart_price:
+        ref_price = flipkart_price
+        
+    # Update prices and URLs in memory and save to MongoDB
+    from backend.services.scraper import generate_store_url
+    db = get_db()
+    
+    for l in listings:
+        source = l["source"]
+        l["url"] = generate_store_url(source, specific_search_query, category)
+        l["last_updated"] = now.isoformat()
+        
+        if source == "Amazon" and amazon_price:
+            l["price"] = float(amazon_price)
+        elif source == "Flipkart" and flipkart_price:
+            l["price"] = float(flipkart_price)
+        else:
+            if ref_price:
+                if source == "Croma":
+                    l["price"] = float(round(ref_price * 1.01, -2))
+                elif source == "Reliance Digital":
+                    l["price"] = float(round(ref_price * 1.005, -2))
+                elif source == "Vijay Sales":
+                    l["price"] = float(round(ref_price * 0.995, -2))
+                    
+        # Save to database
+        try:
+            products_col = db["products"]
+            if hasattr(products_col, "update_one"):
+                doc_id = l["_id"]
+                if isinstance(doc_id, str) and ObjectId.is_valid(doc_id):
+                    match_id = ObjectId(doc_id)
+                else:
+                    match_id = doc_id
+                products_col.update_one(
+                    {"_id": match_id},
+                    {"$set": {
+                        "price": l["price"],
+                        "url": l["url"],
+                        "last_updated": l["last_updated"]
+                    }}
+                )
+        except Exception as e:
+            print(f"Database update error for '{name}': {e}")
+
+def update_prices_for_results(results: list):
+    # Group results by product name so we can update them per product
+    unique_products = {}
+    for r in results:
+        name = r["name"]
+        if name not in unique_products:
+            unique_products[name] = {
+                "category": r["category"],
+                "specifications": r.get("specifications", {}),
+                "listings": []
+            }
+        unique_products[name]["listings"].append(r)
+        
+    # Check and update each product
+    import datetime
+    now = datetime.datetime.utcnow()
+    
+    # Limit synchronous updates to 3 unique products to avoid Vercel timeouts
+    updated_count = 0
+    
+    for name, info in unique_products.items():
+        listings = info["listings"]
+        needs_update = False
+        
+        for l in listings:
+            last_upd = l.get("last_updated")
+            if not last_upd:
+                needs_update = True
+                break
+            
+            if isinstance(last_upd, str):
+                try:
+                    dt = datetime.datetime.fromisoformat(last_upd)
+                except:
+                    dt = datetime.datetime.min
+            else:
+                dt = last_upd
+                
+            if (now - dt).total_seconds() > 600: # 10 minutes
+                needs_update = True
+                break
+                
+        if needs_update:
+            if updated_count < 3:
+                try:
+                    update_single_product_live(name, info["category"], info["specifications"], listings)
+                    updated_count += 1
+                except Exception as e:
+                    print(f"Failed to update '{name}' live: {e}")
+            else:
+                print(f"Update skipped for '{name}' to preserve response latency.")
+
 @app.get("/api/search")
 def search_products(
     q: Optional[str] = Query(None, description="Search term for product name, brand or category"),
@@ -136,6 +267,9 @@ def search_products(
     try:
         cursor = db["products"].find(query)
         results = [serialize_doc(doc) for doc in cursor]
+        
+        # Apply 10-minute caching checks and fetch live updates if needed
+        update_prices_for_results(results)
         
         # Run ML engine on results to score them
         scored_results = ml_engine.score_and_recommend(results)
@@ -285,64 +419,8 @@ def compare_stores(name: str = Query(..., description="Exact name of the product
         if not listings:
             raise HTTPException(status_code=404, detail=f"Product model '{name}' not found.")
             
-        category = listings[0]["category"]
-        specs = listings[0].get("specifications", {})
-        
-        # Build highly specific search query based on RAM/Storage or Display Size
-        specific_search_query = get_specific_search_query(name, category, specs)
-            
-        # Get base price from database as reference
-        base_db_price = min(l["price"] for l in listings)
-        
-        # Scrape Flipkart and Amazon live concurrently
-        import concurrent.futures
-        amazon_prices = []
-        flipkart_prices = []
-        
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            future_amazon = executor.submit(scrape_amazon_live, specific_search_query)
-            future_flipkart = executor.submit(scrape_flipkart_live, specific_search_query)
-            
-            try:
-                amazon_prices = future_amazon.result(timeout=4)
-            except Exception as e:
-                print("Amazon live scrape failed:", e)
-            try:
-                flipkart_prices = future_flipkart.result(timeout=4)
-            except Exception as e:
-                print("Flipkart live scrape failed:", e)
-                
-        # Filter prices to get realistic ones matching the product model
-        amazon_price = filter_realistic_price(amazon_prices, base_db_price)
-        flipkart_price = filter_realistic_price(flipkart_prices, base_db_price)
-        
-        # Determine the reference live price
-        ref_price = None
-        if amazon_price:
-            ref_price = amazon_price
-        elif flipkart_price:
-            ref_price = flipkart_price
-            
-        # Update prices and links in memory dynamically
-        from backend.services.scraper import generate_store_url
-        for l in listings:
-            source = l["source"]
-            # Point URL to the specific RAM/Storage variant search
-            l["url"] = generate_store_url(source, specific_search_query, category)
-            
-            if source == "Amazon" and amazon_price:
-                l["price"] = float(amazon_price)
-            elif source == "Flipkart" and flipkart_price:
-                l["price"] = float(flipkart_price)
-            else:
-                # Calculate others based on live reference if available
-                if ref_price:
-                    if source == "Croma":
-                        l["price"] = float(round(ref_price * 1.01, -2))
-                    elif source == "Reliance Digital":
-                        l["price"] = float(round(ref_price * 1.005, -2))
-                    elif source == "Vijay Sales":
-                        l["price"] = float(round(ref_price * 0.995, -2))
+        # Apply 10-minute caching checks and fetch live updates if needed
+        update_prices_for_results(listings)
 
         # Analyze using ML engine with the updated real-time prices
         compared_listings = ml_engine.score_and_recommend(listings)

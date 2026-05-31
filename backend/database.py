@@ -100,6 +100,13 @@ class MockCollection:
     def count_documents(self, filter_dict):
         return len(self.find(filter_dict))
 
+    def update_one(self, filter_dict, update_dict):
+        doc = self.find_one(filter_dict)
+        if doc and "$set" in update_dict:
+            for k, v in update_dict["$set"].items():
+                doc[k] = v
+        return type('UpdateResult', (object,), {'modified_count': 1 if doc else 0})
+
 class MockDB:
     def __init__(self):
         self.collections = {}
