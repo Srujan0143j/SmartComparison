@@ -115,6 +115,121 @@ def get_specific_search_query(name: str, category: str, specs: dict) -> str:
             
     return " ".join(query_parts)
 
+def match_product_name(query_name: str, title: str) -> bool:
+    import re
+    # Normalize "+" to "plus" for both to handle things like "S26+" vs "S26 Plus"
+    q_name = query_name.lower().replace("+", "plus")
+    t_name = title.lower().replace("+", "plus")
+    
+    q_words = q_name.split()
+    # Check that all query words are present
+    # For digit words, enforce stand-alone matching to prevent e.g. "12" matching inside "512"
+    for w in q_words:
+        if w.isdigit():
+            pattern = r'(?<!\d)' + re.escape(w) + r'(?!\d)'
+            if not re.search(pattern, t_name):
+                return False
+        else:
+            if w not in t_name:
+                return False
+        
+    modifiers = ["pro", "max", "plus", "ultra", "lite", "slim", "digital", "fe", "fold", "flip", "active", "classic", "neo", "oled", "qled", "mini"]
+    for mod in modifiers:
+        pattern = r'\b' + re.escape(mod) + r'\b'
+        if re.search(pattern, t_name):
+            if not re.search(pattern, q_name):
+                return False
+                
+    for word in q_words:
+        if word.isdigit():
+            digit_pattern = r'\b(' + word + r'[a-zA-Z]+)\b'
+            match = re.search(digit_pattern, t_name)
+            if match:
+                combined_word = match.group(1)
+                if combined_word not in q_name:
+                    return False
+                    
+    # Filter out accessories unless query explicitly asks for them
+    accessory_keywords = ["case", "cover", "glass", "protector", "guard", "adapter", "charger", "cable", "film", "shield", "skin", "pouch", "strap", "band", "hood", "tripod", "bag", "mount", "stand"]
+    for acc in accessory_keywords:
+        pattern = r'\b' + re.escape(acc) + r'\b'
+        if re.search(pattern, t_name):
+            if not re.search(pattern, q_name):
+                return False
+                
+    return True
+
+def validate_scraped_product(title_or_alt: str, product_name: str, specs: dict, category: str) -> bool:
+    import re
+    if not title_or_alt:
+        return False
+        
+    # 1. Match product name
+    if not match_product_name(product_name, title_or_alt):
+        return False
+        
+    t_lower = title_or_alt.lower()
+    
+    # 2. Check RAM if present in specs
+    if category in ["Smartphones", "Laptops"] and "RAM" in specs:
+        ram_val = str(specs["RAM"]).lower().replace(" ", "") # e.g. "16gb"
+        ram_num = re.sub(r'[^\d]', '', ram_val)
+        
+        # Find all RAM-like numbers in the title (numbers <= 64 followed by gb/ram)
+        # e.g., "16gb", "16 gb", "16 gb ram"
+        ram_matches = re.findall(r'(\d+)\s*(?:gb|ram)\b', t_lower)
+        ram_numbers = [m for m in ram_matches if int(m) <= 64]
+        
+        if ram_numbers:
+            # If RAM is mentioned in the title, it must match our RAM
+            if ram_num not in ram_numbers:
+                return False
+                
+    # 3. Check Storage if present in specs
+    if category in ["Smartphones", "Laptops", "Gaming Consoles"] and "Storage" in specs:
+        storage_val = str(specs["Storage"]).lower().replace(" ", "")
+        for suffix in ["ssd", "hdd", "emmc"]:
+            storage_val = storage_val.replace(suffix, "")
+            
+        # Find all storage-like values in the title
+        storage_matches = []
+        gb_matches = re.findall(r'(\d+)\s*gb\b', t_lower)
+        for m in gb_matches:
+            val = int(m)
+            if val >= 128:
+                storage_matches.append(str(val) + "gb")
+                
+        tb_matches = re.findall(r'(\d+)\s*tb\b', t_lower)
+        for m in tb_matches:
+            val = int(m)
+            storage_matches.append(str(val) + "tb")
+            if val == 1:
+                storage_matches.extend(["1000gb", "1024gb"])
+            elif val == 2:
+                storage_matches.extend(["2000gb", "2048gb"])
+                
+        if storage_matches:
+            # Our target variants
+            target_variants = [storage_val]
+            if storage_val == "1tb":
+                target_variants.extend(["1000gb", "1024gb"])
+            elif storage_val in ["1000gb", "1024gb"]:
+                target_variants.append("1tb")
+                
+            if not any(var in storage_matches for var in target_variants):
+                return False
+                
+    # 4. Check Screen Size for Monitors
+    if category == "Monitors" and "Screen Size" in specs:
+        screen_size = str(specs["Screen Size"]).lower().replace(" ", "").replace("-", "")
+        size_num = re.sub(r'[^\d]', '', screen_size)
+        if size_num:
+            title_clean = title_or_alt.lower().replace(" ", "").replace("-", "")
+            if size_num not in title_clean:
+                return False
+                
+    return True
+
 def update_single_product_live(name: str, category: str, specs: dict, listings: list):
     import datetime
     from bson import ObjectId
@@ -122,29 +237,29 @@ def update_single_product_live(name: str, category: str, specs: dict, listings: 
     now = datetime.datetime.utcnow()
     specific_search_query = get_specific_search_query(name, category, specs)
     
-    # Get base price from database listings as reference
-    base_db_price = min(l["price"] for l in listings)
-    
     # Scrape Flipkart and Amazon live concurrently
     import concurrent.futures
-    amazon_prices = []
-    flipkart_prices = []
+    amazon_res = None
+    flipkart_res = None
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         future_amazon = executor.submit(scrape_amazon_live, name, specs, category)
         future_flipkart = executor.submit(scrape_flipkart_live, name, specs, category)
         
         try:
-            amazon_prices = future_amazon.result(timeout=3.5)
+            amazon_res = future_amazon.result(timeout=3.5)
         except Exception as e:
             print(f"Amazon live scrape failed for '{name}': {e}")
         try:
-            flipkart_prices = future_flipkart.result(timeout=3.5)
+            flipkart_res = future_flipkart.result(timeout=3.5)
         except Exception as e:
             print(f"Flipkart live scrape failed for '{name}': {e}")
             
-    amazon_price = filter_realistic_price(amazon_prices, base_db_price)
-    flipkart_price = filter_realistic_price(flipkart_prices, base_db_price)
+    amazon_price = amazon_res["price"] if amazon_res else None
+    amazon_url = amazon_res["url"] if amazon_res else None
+    
+    flipkart_price = flipkart_res["price"] if flipkart_res else None
+    flipkart_url = flipkart_res["url"] if flipkart_res else None
     
     ref_price = None
     if amazon_price:
@@ -158,14 +273,27 @@ def update_single_product_live(name: str, category: str, specs: dict, listings: 
     
     for l in listings:
         source = l["source"]
-        l["url"] = generate_store_url(source, specific_search_query, category)
         l["last_updated"] = now.isoformat()
         
-        if source == "Amazon" and amazon_price:
-            l["price"] = float(amazon_price)
-        elif source == "Flipkart" and flipkart_price:
-            l["price"] = float(flipkart_price)
+        if source == "Amazon":
+            if amazon_url:
+                l["url"] = amazon_url
+            elif not l.get("url") or "google.com/search" in l.get("url"):
+                l["url"] = generate_store_url(source, specific_search_query, category)
+            if amazon_price:
+                l["price"] = float(amazon_price)
+                
+        elif source == "Flipkart":
+            if flipkart_url:
+                l["url"] = flipkart_url
+            elif not l.get("url") or "google.com/search" in l.get("url"):
+                l["url"] = generate_store_url(source, specific_search_query, category)
+            if flipkart_price:
+                l["price"] = float(flipkart_price)
+                
         else:
+            # For projected stores (Croma, Reliance, Vijay Sales): they use Google site-search redirect
+            l["url"] = generate_store_url(source, specific_search_query, category)
             if ref_price:
                 if source == "Croma":
                     l["price"] = float(round(ref_price * 1.01, -2))
@@ -282,8 +410,12 @@ def search_products(
             p_category = p["category"]
             p_specs = p.get("specifications", {})
             spec_query = get_specific_search_query(name, p_category, p_specs)
-            from backend.services.scraper import generate_store_url
-            url_to_use = generate_store_url(p["source"], spec_query, p_category)
+            
+            if p["source"] in ["Amazon", "Flipkart"] and p.get("url") and "google.com/search" not in p["url"]:
+                url_to_use = p["url"]
+            else:
+                from backend.services.scraper import generate_store_url
+                url_to_use = generate_store_url(p["source"], spec_query, p_category)
             
             listing_info = {
                 "source": p["source"],
@@ -312,7 +444,7 @@ def search_products(
                     # Track best deal (highest ML score)
                     "best_deal_store": p["source"],
                     "best_deal_price": p["price"],
-                    "best_deal_url": p["url"],
+                    "best_deal_url": url_to_use,
                     "best_deal_score": p["ml_score"] or 80.0,
                     "listings": [listing_info]
                 }
@@ -331,7 +463,7 @@ def search_products(
                 if curr_ml > gm["best_deal_score"]:
                     gm["best_deal_store"] = p["source"]
                     gm["best_deal_price"] = p["price"]
-                    gm["best_deal_url"] = p["url"]
+                    gm["best_deal_url"] = url_to_use
                     gm["best_deal_score"] = curr_ml
                     
         return {"results": list(grouped_models.values()), "raw_count": len(results)}
@@ -351,45 +483,30 @@ def scrape_flipkart_live(product_name: str, specs: dict, category: str = ""):
     try:
         r = requests.get(url, headers=headers, timeout=4)
         if r.status_code != 200:
-            return []
+            return None
             
-        prices = []
-        matches = list(re.finditer(r'alt="([^"]+)"', r.text))
-        for m in matches:
-            title = m.group(1)
-            words = product_name.lower().split()
-            if all(w in title.lower() for w in words):
-                storage = str(specs.get("Storage", "")).lower().replace(" ", "")
-                storage_num = re.sub(r'[^\d]', '', storage)
-                ram = str(specs.get("RAM", "")).lower().replace(" ", "")
-                ram_num = re.sub(r'[^\d]', '', ram)
+        chunks = r.text.split('<a ')
+        for chunk in chunks:
+            href_match = re.search(r'^[^>]*href="([^"]+)"', chunk)
+            alt_match = re.search(r'alt="([^"]+)"', chunk)
+            
+            if href_match and alt_match:
+                href = href_match.group(1)
+                alt = alt_match.group(1).strip()
                 
-                if storage_num and storage_num not in title.lower().replace(" ", ""):
-                    continue
-                    
-                snippet = r.text[m.end() : m.end() + 2500]
-                price_match = re.search(r'class="[^"]*hZ3P6w[^"]*"[^>]*>[^₹]*₹([0-9,]+)', snippet)
-                if not price_match:
-                    price_match = re.search(r'₹([0-9,]+)', snippet)
-                    
-                if price_match:
-                    val = re.sub(r'[^\d]', '', price_match.group(1))
-                    if val:
-                        prices.append(int(val))
+                # Check match using validate_scraped_product
+                if validate_scraped_product(alt, product_name, specs, category):
+                    price_match = re.search(r'₹([0-9,]+)', chunk)
+                    if price_match:
+                        price_val = float(re.sub(r'[^\d]', '', price_match.group(1)))
+                        cleaned_href = href.replace("&amp;", "&")
+                        product_url = "https://www.flipkart.com" + cleaned_href
+                        print(f"Flipkart Live Scraper Match: '{alt}' -> Price: {price_val}")
+                        return {"price": price_val, "url": product_url}
                         
-        if prices:
-            return prices
-            
-        # Fallback to general first price matching class
-        matches = re.findall(r'class="[^"]*hZ3P6w[^"]*"[^>]*>[^₹]*₹([0-9,]+)', r.text)
-        for m in matches:
-            val = re.sub(r'[^\d]', '', m)
-            if val:
-                prices.append(int(val))
-        return prices
     except Exception as e:
         print(f"Error scraping Flipkart live: {e}")
-    return []
+    return None
 
 def scrape_amazon_live(product_name: str, specs: dict, category: str = ""):
     import requests
@@ -405,45 +522,33 @@ def scrape_amazon_live(product_name: str, specs: dict, category: str = ""):
     try:
         r = requests.get(url, headers=headers, timeout=4)
         if r.status_code != 200 or "api-services-support@amazon.com" in r.text:
-            return []
+            return None
             
-        prices = []
         chunks = r.text.split('data-component-type="s-search-result"')
         for chunk in chunks[1:]:
-            title_match = re.search(r'class="a-size-[^"]*a-text-normal"[^>]*>([^<]+)', chunk)
+            title_match = re.search(r'aria-label="([^"]+)"', chunk)
             if not title_match:
-                title_match = re.search(r'class="[^"]*a-text-normal"[^>]*>([^<]+)', chunk)
+                title_match = re.search(r'class="[^"]*a-text-normal"[^>]*>(?:<span[^>]*>)?([^<]+)', chunk)
                 
             price_match = re.search(r'class="a-price-whole">([0-9,]+)', chunk)
-            
-            if title_match and price_match:
-                title = title_match.group(1)
-                price = int(re.sub(r'[^\d]', '', price_match.group(1)))
+            asin_match = re.search(r'/dp/([A-Z0-9]{10})', chunk)
+            if not asin_match:
+                asin_match = re.search(r'/gp/product/([A-Z0-9]{10})', chunk)
                 
-                words = product_name.lower().split()
-                if all(w in title.lower() for w in words):
-                    storage = str(specs.get("Storage", "")).lower().replace(" ", "")
-                    storage_num = re.sub(r'[^\d]', '', storage)
-                    ram = str(specs.get("RAM", "")).lower().replace(" ", "")
-                    ram_num = re.sub(r'[^\d]', '', ram)
+            if title_match and price_match and asin_match:
+                title = title_match.group(1).strip()
+                price_val = float(re.sub(r'[^\d]', '', price_match.group(1)))
+                asin = asin_match.group(1)
+                product_url = f"https://www.amazon.in/dp/{asin}"
+                
+                # Check match using validate_scraped_product
+                if validate_scraped_product(title, product_name, specs, category):
+                    print(f"Amazon Live Scraper Match: '{title}' -> Price: {price_val}")
+                    return {"price": price_val, "url": product_url}
                     
-                    if storage_num and storage_num not in title.lower().replace(" ", ""):
-                        continue
-                        
-                    prices.append(price)
-                    
-        if prices:
-            return prices
-            
-        matches = re.findall(r'class="a-price-whole">([0-9,]+)', r.text)
-        for m in matches:
-            val = re.sub(r'[^\d]', '', m)
-            if val:
-                prices.append(int(val))
-        return prices
     except Exception as e:
         print(f"Error scraping Amazon live: {e}")
-    return []
+    return None
 
 def filter_realistic_price(prices, base_db_price):
     if not prices:
