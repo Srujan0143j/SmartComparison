@@ -140,6 +140,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     init3DBackground();
     
+    // Reset search input and category variables on page refresh/reload to prevent browser-restored stale state issues
+    if (searchInput) searchInput.value = "";
+    currentCategory = "";
+    
     // Perform initial empty search to display some default listings
     searchProducts();
 });

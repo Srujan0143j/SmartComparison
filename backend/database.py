@@ -114,13 +114,32 @@ class MockDB:
         products_col = MockCollection("products")
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            json_path = os.path.join(current_dir, "products.json")
-            if os.path.exists(json_path):
-                with open(json_path, "r", encoding="utf-8") as f:
-                    products_col.data = json.load(f)
-                print(f"Fallback database: Loaded {len(products_col.data)} products from local JSON file.")
-            else:
-                print("Fallback warning: products.json file not found.")
+            parent_dir = os.path.dirname(current_dir)
+            cwd = os.getcwd()
+            
+            # Define potential paths where products.json could be found
+            potential_paths = [
+                os.path.join(current_dir, "products.json"),
+                os.path.join(cwd, "backend", "products.json"),
+                os.path.join(cwd, "products.json"),
+                os.path.join(parent_dir, "backend", "products.json"),
+                os.path.join(parent_dir, "products.json")
+            ]
+            
+            loaded = False
+            tried_paths = []
+            for path in potential_paths:
+                abs_path = os.path.abspath(path)
+                tried_paths.append(abs_path)
+                if os.path.exists(abs_path):
+                    with open(abs_path, "r", encoding="utf-8") as f:
+                        products_col.data = json.load(f)
+                    print(f"Fallback database: Successfully loaded {len(products_col.data)} products from JSON: {abs_path}")
+                    loaded = True
+                    break
+            
+            if not loaded:
+                print(f"Fallback warning: products.json file not found. Tried paths: {tried_paths}")
         except Exception as e:
             print(f"Fallback warning: Error loading products.json: {e}")
         
