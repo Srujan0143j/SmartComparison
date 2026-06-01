@@ -145,7 +145,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function selectCategory(catName) {
-    if (searchInput) searchInput.value = "";
+    // Keep searchInput.value to filter within search results
     currentCategory = catName;
     
     document.querySelectorAll(".category-chip").forEach(c => {
@@ -204,8 +204,21 @@ async function searchProducts() {
     try {
         const response = await fetch(url);
         const data = await response.json();
-        console.log("searchProducts: Fetch succeeded. Results count:", data.results ? data.results.length : 0);
-        renderResults(data.results);
+        
+        // Smart fallback logic: if a user filters by category within search results and gets 0 matches,
+        // clear the search input and search for the category alone.
+        if (query && currentCategory && (!data.results || data.results.length === 0)) {
+            console.log("No results matching search in this category. Falling back to category-only query...");
+            if (searchInput) searchInput.value = "";
+            let fallbackUrl = `${API_BASE}/api/search?category=${encodeURIComponent(currentCategory)}`;
+            console.log("searchProducts fallback: Fetching from URL:", fallbackUrl);
+            const fallbackResponse = await fetch(fallbackUrl);
+            const fallbackData = await fallbackResponse.json();
+            renderResults(fallbackData.results);
+        } else {
+            console.log("searchProducts: Fetch succeeded. Results count:", data.results ? data.results.length : 0);
+            renderResults(data.results);
+        }
     } catch (err) {
         console.error("API error:", err);
         resultsGrid.innerHTML = `
