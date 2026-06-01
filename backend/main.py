@@ -488,8 +488,7 @@ def search_products(
                     
         return {"results": list(grouped_models.values()), "raw_count": len(results)}
     except Exception as e:
-        import traceback
-        return {"error": str(e), "traceback": traceback.format_exc(), "status_code": 500}
+        raise HTTPException(status_code=500, detail=str(e))
 
 def scrape_flipkart_live(product_name: str, specs: dict, category: str = ""):
     import requests

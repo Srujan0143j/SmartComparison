@@ -93,29 +93,39 @@ class MLEngine:
         products = self.calculate_sentiment_for_products(products)
 
         # 2. Extract price and review count bounds for normalization
-        prices = [p["price"] for p in products]
+        prices = [p.get("price") for p in products if p.get("price") is not None]
         min_price = min(prices) if prices else 0
         max_price = max(prices) if prices else 0
 
-        review_counts = [p.get("review_count", 0) for p in products]
+        review_counts = [p.get("review_count", 0) or 0 for p in products]
         max_reviews = max(review_counts) if review_counts and max(review_counts) > 0 else 1
 
         # 3. Compute metrics for each product
         for p in products:
+            # Handle potentially missing or None price
+            price_val = p.get("price")
+            if price_val is None:
+                price_val = max_price  # Treat as maximum (least preferred) if missing
+                
             # Price Score: cheaper is better (1.0 = cheapest, 0.0 = most expensive if range exists)
             if max_price == min_price:
                 p_score = 1.0
             else:
-                p_score = 1.0 - ((p["price"] - min_price) / (max_price - min_price))
+                p_score = 1.0 - ((price_val - min_price) / (max_price - min_price))
 
             # Rating Score: 0 to 1
-            r_score = p["rating"] / 5.0
+            rating_val = p.get("rating", 3.0)
+            if rating_val is None:
+                rating_val = 3.0
+            r_score = rating_val / 5.0
 
             # Sentiment Score: map [-1, 1] to [0, 1]
             s_score = (p.get("ml_sentiment", 0.0) + 1.0) / 2.0
 
             # Review Volume Score (logarithmic scaling)
             rev_count = p.get("review_count", 1)
+            if rev_count is None or rev_count < 1:
+                rev_count = 1
             v_score = math.log(rev_count) / math.log(max_reviews) if max_reviews > 1 else 1.0
 
             # Composite weighted score (out of 100)
@@ -140,10 +150,13 @@ class MLEngine:
             sorted_by_score[0]["ml_label"] = "Best Value"
             
         # Guarantee that cheapest gets "Budget Pick" if it is significantly cheaper and has acceptable rating
-        sorted_by_price = sorted(products, key=lambda x: x["price"])
+        sorted_by_price = sorted(products, key=lambda x: x.get("price") if x.get("price") is not None else float('inf'))
         if sorted_by_price and len(products) > 1:
             cheapest = sorted_by_price[0]
-            if cheapest["rating"] >= 3.5 and cheapest["ml_label"] != "Best Value":
+            cheapest_price = cheapest.get("price")
+            cheapest_rating = cheapest.get("rating", 0.0) or 0.0
+            cheapest_label = cheapest.get("ml_label")
+            if cheapest_price is not None and cheapest_rating >= 3.5 and cheapest_label != "Best Value":
                 cheapest["ml_label"] = "Budget Pick"
 
         return products
