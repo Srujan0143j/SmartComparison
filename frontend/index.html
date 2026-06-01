@@ -8,56 +8,48 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=5">
     <!-- FontAwesome for beautiful icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for ML charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <canvas id="bg-canvas" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -2; pointer-events: none; opacity: 0.35;"></canvas>
-    <div class="bg-gradient-circles">
-        <div class="circle circle-1"></div>
-        <div class="circle circle-2"></div>
-    </div>
+    <canvas id="bgCanvas"></canvas>
+    <div class="vignette"></div>
 
     <div id="page-wrapper">
-        <header>
-            <div class="nav-container">
-                <div class="logo" id="nav-logo">
-                    <i class="fa-solid fa-scale-balanced"></i> Smart<span>Compare</span>
-                </div>
-                <ul class="nav-links">
-                    <li><a href="#" class="active" id="nav-home">Home</a></li>
-                </ul>
-            </div>
-        </header>
+        <nav>
+            <a href="#" class="logo" id="nav-logo">⚖️ Smart <span class="blue">Compare</span></a>
+            <a href="#" id="nav-home">Home</a>
+        </nav>
 
     <main>
         <section class="hero" id="hero-sec">
-            <h1>Compare the Best Rated Products with <span>Smart ML Insights</span></h1>
+            <h1>Compare the Best Rated Products with<br><span class="cyan">Smart ML Insights</span></h1>
             <p>SmartCompare processes thousands of reviews, rating volumes, and brand trust to score and suggest products across stores.</p>
-            
-            <div class="search-container">
-                <div class="search-box-wrapper">
-                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" id="search-input" placeholder="Search for OnePlus, iPhone, MacBook, Sony WH-1000XM5...">
+
+            <div class="search-wrap">
+                <div class="search-glow"></div>
+                <div class="search-bar">
+                    <svg width="17" height="17" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                    <input type="text" id="search-input" placeholder="Search for OnePlus, iPhone, MacBook, Sony WH-1000XM5…">
                     <button class="search-btn" id="search-btn">Search</button>
                 </div>
-                
-                <div class="categories-filter" id="category-chips">
-                    <div class="category-chip active" data-category="">All</div>
-                    <div class="category-chip" data-category="Smartphones">Smartphones</div>
-                    <div class="category-chip" data-category="Laptops">Laptops</div>
-                    <div class="category-chip" data-category="Headphones">Headphones</div>
-                    <div class="category-chip" data-category="TVs">TVs</div>
-                    <div class="category-chip" data-category="Cameras">Cameras</div>
-                    <div class="category-chip" data-category="Smartwatches">Smartwatches</div>
-                    <div class="category-chip" data-category="Audio Speakers">Speakers</div>
-                    <div class="category-chip" data-category="Gaming Consoles">Gaming</div>
-                    <div class="category-chip" data-category="Appliances">Appliances</div>
-                    <div class="category-chip" data-category="Monitors">Monitors</div>
-                </div>
+            </div>
+
+            <div class="cats" id="category-chips">
+                <a href="#" class="cat category-chip active" data-category="">All</a>
+                <a href="#" class="cat category-chip" data-category="Smartphones">Smartphones</a>
+                <a href="#" class="cat category-chip" data-category="Laptops">Laptops</a>
+                <a href="#" class="cat category-chip" data-category="Headphones">Headphones</a>
+                <a href="#" class="cat category-chip" data-category="TVs">TVs</a>
+                <a href="#" class="cat category-chip" data-category="Cameras">Cameras</a>
+                <a href="#" class="cat category-chip" data-category="Smartwatches">Smartwatches</a>
+                <a href="#" class="cat category-chip" data-category="Audio Speakers">Speakers</a>
+                <a href="#" class="cat category-chip" data-category="Gaming Consoles">Gaming</a>
+                <a href="#" class="cat category-chip" data-category="Appliances">Appliances</a>
+                <a href="#" class="cat category-chip" data-category="Monitors">Monitors</a>
             </div>
         </section>
 
@@ -206,6 +198,6 @@
         </div>
     </div>
 
-    <script src="js/app.js"></script>
+    <script src="js/app.js?v=5"></script>
 </body>
 </html>
