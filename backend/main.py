@@ -323,6 +323,11 @@ def update_single_product_live(name: str, category: str, specs: dict, listings: 
             print(f"Database update error for '{name}': {e}")
 
 def update_prices_for_results(results: list):
+    from backend.database import IS_VERCEL
+    if IS_VERCEL:
+        print("Running on Vercel. Skipping live scraping to prevent Gateway Timeout.")
+        return
+        
     # Group results by product name so we can update them per product
     unique_products = {}
     for r in results:
