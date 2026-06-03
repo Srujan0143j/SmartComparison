@@ -576,8 +576,8 @@ def search_products(
                 "price": price_to_use,
                 "url": url_to_use,
                 "rating": p["rating"],
-                "ml_score": p["ml_score"] or 80.0,
-                "ml_label": p["ml_label"] or "Recommended"
+                "ml_score": p.get("ml_score") or 80.0,
+                "ml_label": p.get("ml_label") or "Recommended"
             }
             
             has_price = price_to_use is not None
@@ -593,15 +593,15 @@ def search_products(
                     "avg_rating": p["rating"],
                     "total_reviews": p["review_count"],
                     "stores": [p["source"]],
-                    "ml_score": p["ml_score"] or 80.0,
-                    "ml_label": p["ml_label"] or "Recommended",
+                    "ml_score": p.get("ml_score") or 80.0,
+                    "ml_label": p.get("ml_label") or "Recommended",
                     "specifications": p["specifications"],
                     
                     # Track best deal (highest ML score with price)
                     "best_deal_store": p["source"] if has_price else None,
                     "best_deal_price": price_to_use if has_price else None,
                     "best_deal_url": url_to_use,
-                    "best_deal_score": p["ml_score"] if has_price else 0,
+                    "best_deal_score": p.get("ml_score") or 0.0 if has_price else 0,
                     "listings": [listing_info]
                 }
             else:
@@ -625,7 +625,7 @@ def search_products(
                 
                 # Update best deal if this listing has a higher ML score and a valid price
                 if has_price:
-                    curr_ml = p["ml_score"] or 80.0
+                    curr_ml = p.get("ml_score") or 80.0
                     if gm["best_deal_store"] is None or curr_ml > gm["best_deal_score"]:
                         gm["best_deal_store"] = p["source"]
                         gm["best_deal_price"] = price_to_use
