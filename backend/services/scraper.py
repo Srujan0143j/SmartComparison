@@ -276,11 +276,251 @@ def generate_reviews(avg_rating: float) -> List[Dict[str, Any]]:
         author = random.choice(["Amit Kumar", "Sneha S.", "Rahul Verma", "Pooja Mehta", "John D.", "Vikram R.", "Ananya Sen", "Rajesh P."])
         reviews.append({
             "author": author,
-            "rating": template["rating"] + random.choice([-0.5, 0, 0.5]),
+            "rating": max(1.0, min(5.0, template["rating"] + random.choice([-0.5, 0, 0.5]))),
             "title": template["title"],
             "text": template["text"]
         })
+        
+    # Inject a potential mock fake review (25% chance)
+    if random.random() < 0.25:
+        fake_type = random.choice(["caps", "short_extreme", "mismatch", "duplicate"])
+        if fake_type == "caps":
+            reviews.append({
+                "author": "Anonymous Buyer",
+                "rating": 5.0,
+                "title": "AMAZING!!!",
+                "text": "THIS IS THE BEST PRODUCT EVER!!! I LOVE IT SO MUCH AND RECOMMENDED TO EVERYONE!!! BUY NOW!!!"
+            })
+        elif fake_type == "short_extreme":
+            reviews.append({
+                "author": "Anonymous",
+                "rating": 5.0,
+                "title": "Nice",
+                "text": "Good phone."
+            })
+        elif fake_type == "mismatch":
+            reviews.append({
+                "author": "Rajesh K.",
+                "rating": 1.0,
+                "title": "Excellent",
+                "text": "This product is amazing, fast delivery, and perfect packaging! Love it!"
+            })
+        elif fake_type == "duplicate":
+            dup_text = "Standard average product. Disappointed with the quality and delivery."
+            reviews.append({
+                "author": "User A",
+                "rating": 2.0,
+                "title": "Poor",
+                "text": dup_text
+            })
+            reviews.append({
+                "author": "User B",
+                "rating": 2.0,
+                "title": "Average",
+                "text": dup_text
+            })
     return reviews
+
+def get_logical_base_price(category: str, brand: str, model: str) -> float:
+    name = model.lower()
+    
+    if category == "Smartphones":
+        if "fold" in name:
+            return 164999.0
+        if "ultra" in name:
+            return 129999.0
+        if "pro max" in name:
+            if "17" in name: return 159900.0
+            if "16" in name: return 144900.0
+            if "15" in name: return 134900.0
+            if "14" in name: return 119900.0
+            return 109900.0
+        if "pro xl" in name:
+            return 124999.0
+        if "pro" in name:
+            if "apple" in name or "iphone" in name or brand.lower() == "apple":
+                if "17" in name: return 139900.0
+                if "16" in name: return 119900.0
+                if "15" in name: return 109900.0
+                return 89900.0
+            if "google" in name or "pixel" in name or brand.lower() == "google":
+                return 109999.0
+            if "samsung" in name or "s2" in name or brand.lower() == "samsung":
+                return 79999.0
+            return 49999.0
+        if "plus" in name or "s26+" in name or "s25+" in name or "s24+" in name:
+            if "17" in name: return 99900.0
+            if "16" in name: return 89900.0
+            if "15" in name: return 79900.0
+            if "s26" in name: return 89999.0
+            if "s25" in name: return 84999.0
+            if "s24" in name: return 84999.0
+            return 69900.0
+        if "flip" in name:
+            return 99999.0
+        if "lite" in name or "13c" in name or "cmf" in name or "y200" in name or "t3" in name:
+            return 14999.0
+        if "ce4" in name or "nord" in name or "a35" in name or "m55" in name or "f55" in name:
+            return 24999.0
+        if "a55" in name or "12r" in name or "11r" in name or "13r" in name:
+            return 39999.0
+        # Standard flagship
+        if "17" in name: return 89900.0
+        if "16" in name: return 79900.0
+        if "15" in name: return 69900.0
+        if "14" in name: return 59900.0
+        if "s26" in name: return 79999.0
+        if "s25" in name: return 74999.0
+        if "s24" in name: return 74999.0
+        if "s23" in name: return 64999.0
+        if "oneplus 13" in name or "oneplus 12" in name: return 64999.0
+        if "pixel 10" in name: return 79999.0
+        if "pixel 9" in name: return 75999.0
+        if "pixel 8" in name: return 69999.0
+        return 29999.0
+        
+    elif category == "Laptops":
+        if "m3 max" in name: return 249900.0
+        if "m3 pro" in name: return 199900.0
+        if "m3" in name: return 114900.0
+        if "m2" in name: return 99900.0
+        if "carbon" in name or "spectre" in name or "xps 15" in name or "zenbook duo" in name or "predator helios" in name or "legion pro" in name or "omen" in name:
+            return 149900.0
+        if "yoga 9" in name or "zenbook" in name or "rog" in name or "triton" in name:
+            return 119900.0
+        if "yoga 7" in name or "nitro" in name or "victus" in name or "g15" in name or "g16" in name or "thinkpad" in name or "swift" in name:
+            return 74900.0
+        if "inspiron" in name or "pavilion" in name or "ideapad slim 5" in name or "aspire 7" in name:
+            return 54900.0
+        return 39900.0
+        
+    elif category == "Headphones":
+        if "ultra" in name or "xm5" in name or "momentum 4" in name:
+            return 29990.0
+        if "xm4" in name or "quietcomfort" in name:
+            return 23990.0
+        if "accentum" in name or "770nc" in name or "660nc" in name or "studio pro" in name:
+            return 14990.0
+        if "ch720n" in name or "tour" in name or "live" in name:
+            return 9990.0
+        if "wave" in name or "ch520" in name or "c100" in name:
+            return 3499.0
+        return 5999.0
+        
+    elif category == "TVs":
+        if "8k" in name or "g3" in name:
+            return 249990.0
+        if "c3" in name or "oled a80" in name or "ux series" in name:
+            return 169990.0
+        if "b3" in name or "neo qled 4k" in name or "mini led" in name:
+            return 149990.0
+        if "the frame" in name or "qned" in name or "q2 qled" in name or "c745" in name:
+            return 84990.0
+        if "crystal 4k" in name or "ur7500" in name or "x80l" in name or "x74l" in name:
+            return 49990.0
+        if "smart tv" in name or "redmi" in name or "s5400" in name:
+            return 15999.0
+        return 29999.0
+        
+    elif category == "Cameras":
+        if "alpha 1" in name or "z9" in name or "gfx 100" in name:
+            return 549990.0
+        if "eos r3" in name or "alpha 7r" in name or "z8" in name:
+            return 349990.0
+        if "eos r5" in name or "d850" in name:
+            return 329995.0
+        if "eos r6" in name or "alpha 7 iv" in name or "z6 ii" in name or "x-t5" in name:
+            return 179990.0
+        if "alpha 6700" in name or "x-s20" in name or "lumix s5" in name:
+            return 129990.0
+        if "eos r10" in name or "x-t30" in name or "z50" in name or "lumix gh6" in name:
+            return 79990.0
+        if "r50" in name or "m50" in name or "zv-e10" in name or "z fc" in name or "d5600" in name:
+            return 57995.0
+        if "instax" in name or "powershot" in name or "zv-1" in name:
+            return 14990.0
+        return 49990.0
+        
+    elif category == "Smartwatches":
+        if "ultra" in name or "fenix" in name:
+            return 81990.0
+        if "forerunner 9" in name:
+            return 67490.0
+        if "venu" in name or "watch series" in name:
+            return 41900.0
+        if "galaxy watch 6 classic" in name or "forerunner 2" in name:
+            return 36999.0
+        if "galaxy watch 6" in name or "watch se" in name or "sense 2" in name:
+            return 29999.0
+        if "watch 5" in name or "versa 4" in name or "gtr" in name or "gts" in name:
+            return 19999.0
+        if "charge 6" in name or "inspire 3" in name or "bip" in name:
+            return 11999.0
+        return 4999.0
+        
+    elif category == "Audio Speakers":
+        if "woburn" in name or "xv900" in name or "partybox" in name:
+            return 59999.0
+        if "stanmore" in name or "authentics" in name or "home speaker 500" in name:
+            return 34500.0
+        if "boombox" in name or "xtreme" in name or "xg300" in name or "revolve+" in name:
+            return 29999.0
+        if "acton" in name or "middleton" in name or "flex" in name or "aura" in name:
+            return 15900.0
+        if "emberton" in name or "charge" in name or "xe300" in name:
+            return 13990.0
+        if "flip" in name or "xe200" in name or "go + play" in name:
+            return 9999.0
+        if "xb100" in name or "go 4" in name or "willen" in name:
+            return 3990.0
+        return 7990.0
+        
+    elif category == "Gaming Consoles":
+        if "vr2" in name:
+            return 57990.0
+        if "xbox series x" in name or "playstation 5" in name or "steam deck oled" in name:
+            return 48990.0
+        if "rog ally" in name or "xbox series s" in name:
+            return 34990.0
+        if "switch oled" in name or "steam deck" in name:
+            return 30999.0
+        if "portal" in name or "switch lite" in name:
+            return 17499.0
+        if "controller" in name:
+            return 5990.0
+        return 24990.0
+        
+    elif category == "Appliances":
+        if "side-by-side" in name or "instaview" in name:
+            return 89990.0
+        if "v15" in name or "purifier" in name:
+            return 59900.0
+        if "supersonic" in name or "airstrait" in name:
+            return 49900.0
+        if "direct drive" in name or "front load" in name:
+            return 39990.0
+        if "double door" in name or "dishwasher" in name:
+            return 35990.0
+        if "microwave" in name or "air fryer" in name:
+            return 18990.0
+        if "shaver" in name or "toothbrush" in name or "mixer" in name:
+            return 5990.0
+        return 14990.0
+        
+    elif category == "Monitors":
+        if "odyssey g9" in name or "alienware" in name:
+            return 139999.0
+        if "ultragear oled" in name or "ultrasharp 32" in name:
+            return 99999.0
+        if "dualup" in name or "odyssey g7" in name or "smart monitor" in name:
+            return 49999.0
+        if "ultrasharp 27" in name or "viewfinity" in name or "designvue" in name:
+            return 39999.0
+        if "p2723d" in name or "ultragear 27" in name or "mobiuz" in name:
+            return 24999.0
+        return 14999.0
+        
+    return 19999.0
 
 def seed_database():
     db = get_db()
@@ -451,29 +691,7 @@ def seed_database():
                 if model in base_prices:
                     base_price = base_prices[model]
                 else:
-                    # Category-based default price range
-                    if category == "Smartphones":
-                        base_price = random.choice([12999, 19999, 29999, 49999, 79999, 119999])
-                    elif category == "Laptops":
-                        base_price = random.choice([39999, 54999, 74999, 99999, 149999, 219999])
-                    elif category == "Headphones":
-                        base_price = random.choice([1999, 3999, 7999, 14999, 24999, 34999])
-                    elif category == "TVs":
-                        base_price = random.choice([15999, 27999, 42999, 79999, 129999, 249999])
-                    elif category == "Cameras":
-                        base_price = random.choice([34999, 57999, 89999, 139999, 219999, 349999])
-                    elif category == "Smartwatches":
-                        base_price = random.choice([2999, 5999, 12999, 24999, 39999, 79999])
-                    elif category == "Audio Speakers":
-                        base_price = random.choice([1999, 4999, 9999, 18990, 29990, 49990])
-                    elif category == "Gaming Consoles":
-                        base_price = random.choice([4990, 18990, 34990, 44990, 54990])
-                    elif category == "Appliances":
-                        base_price = random.choice([14999, 24999, 38990, 59990, 89990])
-                    elif category == "Monitors":
-                        base_price = random.choice([9999, 15999, 24999, 44999, 74999, 119999])
-                    else:
-                        base_price = 25000
+                    base_price = get_logical_base_price(category, brand, model)
                 
                 # Cache specifications for this model
                 if full_name not in model_specs_cache:
@@ -495,6 +713,26 @@ def seed_database():
                     
                     reviews = generate_reviews(rating)
                     
+                    # Generate 90-day price history ending with current price
+                    import datetime
+                    import math
+                    price_history = []
+                    current_date = datetime.date(2026, 6, 2)
+                    for d_offset in range(89, -1, -1):
+                        hist_date = current_date - datetime.timedelta(days=d_offset)
+                        if d_offset == 0:
+                            hist_price = float(price)
+                        else:
+                            # Fluctuates around final price with a weekly cycle plus random noise
+                            weekly_cycle = math.sin(d_offset * (2 * math.pi / 7)) * 0.02
+                            random_noise = random.uniform(-0.015, 0.015)
+                            hist_var = weekly_cycle + random_noise
+                            hist_price = float(round(price * (1 + hist_var), -2))
+                        price_history.append({
+                            "date": hist_date.strftime("%Y-%m-%d"),
+                            "price": hist_price
+                        })
+                    
                     product_doc = {
                         "name": full_name,
                         "category": category,
@@ -507,12 +745,16 @@ def seed_database():
                         "rating": float(rating),
                         "review_count": int(review_count),
                         "reviews": reviews,
-                        "specifications": specs
+                        "specifications": specs,
+                        "price_history": price_history
                     }
                     all_products.append(product_doc)
                     
-    products_col.insert_many(all_products)
-    print(f"Database seeded with {len(all_products)} products.")
+    # Pre-score seeded products with ML features
+    from backend.services.ml_engine import ml_engine
+    scored_products = ml_engine.score_and_recommend(all_products)
+    products_col.insert_many(scored_products)
+    print(f"Database seeded with {len(scored_products)} products including 90-day price history and ML metrics.")
 
 if __name__ == "__main__":
     seed_database()

@@ -8,6 +8,21 @@ let compareList = []; // Array of product names
 let storeChartInstance = null;
 let crossChartInstance = null;
 let shouldScrollToResults = false;
+let currentPriceHistory = [];
+
+function getRelativeTime(isoString) {
+    if (!isoString) return "Last Sync: Just now";
+    const now = new Date();
+    const updated = new Date(isoString);
+    const diffMs = now - updated;
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return "Last Sync: Just now";
+    if (diffMins < 60) return `Last Sync: ${diffMins} min ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `Last Sync: ${diffHours} hr ago`;
+    return `Last Sync: ${Math.floor(diffHours/24)} days ago`;
+}
 
 // DOM Elements (assigned dynamically inside DOMContentLoaded)
 let pageWrapper, searchInput, searchBtn, categoryChips, resultsGrid, resultsSec, resultsCountText, loadingSpinner, loadingText, heroSec;
@@ -138,17 +153,163 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    // Alert Subscription click listener
+    const subscribeBtn = document.getElementById("subscribe-alert-btn");
+    if (subscribeBtn) {
+        subscribeBtn.addEventListener("click", async () => {
+            const contactInput = document.getElementById("alert-contact");
+            const targetInput = document.getElementById("alert-target-price");
+            const statusMsg = document.getElementById("alert-status-msg");
+            
+            const contact = contactInput.value.trim();
+            const target = targetInput.value.trim();
+            const channelEl = document.querySelector('input[name="alert-channel"]:checked');
+            const channel = channelEl ? channelEl.value : "email";
+            const productName = document.getElementById("store-modal-title").textContent;
+            
+            if (!contact) {
+                alert("Please enter your email or phone number.");
+                return;
+            }
+            if (!target || isNaN(parseFloat(target))) {
+                alert("Please enter a valid target price.");
+                return;
+            }
+            
+            const currentPrice = storeModal.dataset.currentMinPrice || "0";
+            
+            try {
+                subscribeBtn.disabled = true;
+                subscribeBtn.textContent = "Subscribing...";
+                
+                const res = await fetch(`${API_BASE}/api/alerts/subscribe`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        email_or_phone: contact,
+                        channel: channel,
+                        product_name: productName,
+                        target_price: parseFloat(target),
+                        current_price: parseFloat(currentPrice)
+                    })
+                });
+                
+                if (res.ok) {
+                    statusMsg.textContent = "Subscribed Successfully! We will alert you on price drop.";
+                    statusMsg.style.color = "var(--success)";
+                    statusMsg.style.display = "block";
+                    setTimeout(() => {
+                        statusMsg.style.display = "none";
+                    }, 4000);
+                    contactInput.value = "";
+                    targetInput.value = "";
+                } else {
+                    throw new Error("Failed to subscribe alert.");
+                }
+            } catch (err) {
+                console.error(err);
+                statusMsg.textContent = "Subscription Failed. Try again later.";
+                statusMsg.style.color = "var(--danger)";
+                statusMsg.style.display = "block";
+            } finally {
+                subscribeBtn.disabled = false;
+                subscribeBtn.textContent = "Subscribe";
+            }
+        });
+    }
+
+    // Notification dropdown toggle
+    const bell = document.getElementById("notification-bell");
+    const dropdown = document.getElementById("notification-dropdown");
+    if (bell && dropdown) {
+        bell.addEventListener("click", (e) => {
+            const isVisible = dropdown.style.display === "block";
+            dropdown.style.display = isVisible ? "none" : "block";
+            e.stopPropagation();
+        });
+        
+        // Prevent dropdown clicks from closing it
+        dropdown.addEventListener("click", (e) => {
+            e.stopPropagation();
+        });
+    }
+    
+    document.addEventListener("click", () => {
+        if (dropdown) dropdown.style.display = "none";
+    });
+    
+    const clearBtn = document.getElementById("clear-notifications");
+    if (clearBtn) {
+        clearBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const list = document.getElementById("notification-list");
+            if (list) {
+                list.innerHTML = `
+                    <div class="empty-notification" style="text-align: center; padding: 15px 0; font-style: italic;">No price alerts triggered yet.</div>
+                `;
+            }
+            const badge = document.getElementById("notification-count");
+            if (badge) {
+                badge.style.display = "none";
+                badge.textContent = "0";
+            }
+        });
+    }
+
     init3DBackground();
     
     // Reset search input and category variables on page refresh/reload to prevent browser-restored stale state issues
     if (searchInput) searchInput.value = "";
     currentCategory = "";
     
+    // Bind AI Toggle listener
+    const aiToggle = document.getElementById("ai-toggle");
+    if (aiToggle && searchInput) {
+        aiToggle.checked = false; // ensure default unchecked
+        aiToggle.addEventListener("change", () => {
+            if (aiToggle.checked) {
+                searchInput.placeholder = "Describe what you need (e.g. best laptop under 60k for gaming)";
+            } else {
+                searchInput.placeholder = "Search for OnePlus, iPhone, MacBook, Sony WH-1000XM5…";
+            }
+        });
+    }
+
+    // Bind price history range buttons listener
+    document.querySelectorAll(".range-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            document.querySelectorAll(".range-btn").forEach(b => {
+                b.classList.remove("active");
+                b.style.background = "rgba(255,255,255,0.02)";
+                b.style.borderColor = "rgba(255,255,255,0.05)";
+                b.style.color = "var(--text-muted)";
+                b.style.fontWeight = "normal";
+            });
+            btn.classList.add("active");
+            btn.style.background = "rgba(255,255,255,0.08)";
+            btn.style.borderColor = "rgba(255,255,255,0.15)";
+            btn.style.color = "var(--text-main)";
+            btn.style.fontWeight = "600";
+            
+            const range = btn.getAttribute("data-range");
+            drawPriceHistoryChart(currentPriceHistory, range);
+        });
+    });
+    
     // Perform initial empty search to display some default listings
     searchProducts();
+    
+    // Initialize notifications (but skip recommendations on refresh)
+    fetchNotifications();
+    
+    // Poll notifications every 45 seconds to keep drop alerts live!
+    setInterval(fetchNotifications, 45000);
 });
 
 function selectCategory(catName) {
+    if (catName) {
+        trackUserCategory(catName);
+    }
     // Keep searchInput.value to filter within search results
     currentCategory = catName;
     
@@ -196,32 +357,60 @@ function hideLoading() {
 
 // Search
 async function searchProducts() {
-    showLoading("Fetching products and applying ML models...");
+    const aiToggle = document.getElementById("ai-toggle");
+    const isAiMode = aiToggle && aiToggle.checked;
+    
+    showLoading(isAiMode ? "AI Assistant is formulating recommendations..." : "Fetching products and applying ML models...");
     
     const query = searchInput ? searchInput.value.trim() : "";
-    let url = `${API_BASE}/api/search?`;
-    if (query) url += `q=${encodeURIComponent(query)}&`;
-    if (currentCategory) url += `category=${encodeURIComponent(currentCategory)}`;
     
-    console.log("searchProducts: Fetching from URL:", url);
+    // Instantly hide the recommendations section if there is an active search or AI Assistant mode
+    const recoSec = document.getElementById("recommendations-sec");
+    if (recoSec) {
+        if (query || currentCategory || isAiMode) {
+            recoSec.style.display = "none";
+        }
+    }
+    
+    if (query) {
+        trackUserSearch(query);
+    }
+    
+    let url = isAiMode ? `${API_BASE}/api/ai-assistant` : `${API_BASE}/api/search?`;
+    if (!isAiMode) {
+        if (query) url += `q=${encodeURIComponent(query)}&`;
+        if (currentCategory) url += `category=${encodeURIComponent(currentCategory)}`;
+    }
+    
+    console.log("searchProducts: Fetching, AI Mode:", isAiMode, "URL:", url);
     
     try {
-        const response = await fetch(url);
+        let response;
+        if (isAiMode) {
+            response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query: query })
+            });
+        } else {
+            response = await fetch(url);
+        }
+        
         const data = await response.json();
         
         // Smart fallback logic: if a user filters by category within search results and gets 0 matches,
         // clear the search input and search for the category alone.
-        if (query && currentCategory && (!data.results || data.results.length === 0)) {
+        if (!isAiMode && query && currentCategory && (!data.results || data.results.length === 0)) {
             console.log("No results matching search in this category. Falling back to category-only query...");
             if (searchInput) searchInput.value = "";
             let fallbackUrl = `${API_BASE}/api/search?category=${encodeURIComponent(currentCategory)}`;
             console.log("searchProducts fallback: Fetching from URL:", fallbackUrl);
             const fallbackResponse = await fetch(fallbackUrl);
             const fallbackData = await fallbackResponse.json();
-            renderResults(fallbackData.results);
+            renderResults(fallbackData.results, isAiMode);
         } else {
             console.log("searchProducts: Fetch succeeded. Results count:", data.results ? data.results.length : 0);
-            renderResults(data.results);
+            renderResults(data.results, isAiMode);
         }
     } catch (err) {
         console.error("API error:", err);
@@ -237,7 +426,7 @@ async function searchProducts() {
 }
 
 // Render Results Grid
-function renderResults(products) {
+function renderResults(products, isAiMode = false) {
     resultsGrid.innerHTML = "";
     
     if (!products || products.length === 0) {
@@ -268,9 +457,21 @@ function renderResults(products) {
         
         const isAdded = compareList.includes(p.name);
         
+        let justificationHtml = "";
+        if (isAiMode && p.justification) {
+            justificationHtml = `
+                <div class="ai-justification" style="margin-bottom: 1rem; padding: 10px; background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: var(--radius-sm); font-size: 0.78rem; line-height: 1.4; color: #a5b4fc;">
+                    <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--warning); margin-right: 4px;"></i> <strong>AI Guide:</strong> ${p.justification}
+                </div>
+            `;
+        }
+        
         card.innerHTML = `
             <div class="card-glare"></div>
             <span class="card-badge ${badgeClass}">${p.ml_label}</span>
+            <div style="position: absolute; top: 12px; right: 12px; font-size: 0.72rem; font-weight: 700; background: rgba(15, 23, 42, 0.85); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); border-radius: 6px; padding: 2px 8px; z-index: 10; font-family: var(--font-heading);">
+                Score: ${Math.round(p.ml_score)}
+            </div>
             <div class="card-img-wrapper">
                 <img src="${p.image_url}" alt="${p.name}" onerror="this.src='https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=300&auto=format&fit=crop'">
             </div>
@@ -281,6 +482,8 @@ function renderResults(products) {
                     <div class="stars">${renderStars(p.avg_rating)}</div>
                     <span class="reviews-cnt">(${(p.total_reviews || 0).toLocaleString()} reviews)</span>
                 </div>
+
+                ${justificationHtml}
 
                 
                 <!-- Specifications List -->
@@ -305,7 +508,7 @@ function renderResults(products) {
                                     ${l.source} 
                                     ${l.source === p.best_deal_store ? '<span style="font-size: 0.65rem; padding: 0.05rem 0.2rem; background: var(--success-light); color: var(--success); border-radius: 3px; font-weight: 700;">Best</span>' : ''}
                                 </span>
-                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.75rem;">
                                     <a href="${l.url}" target="_blank" style="color: var(--accent); font-size: 0.75rem; display: flex; align-items: center; gap: 0.25rem; background: rgba(99, 102, 241, 0.15); padding: 0.2rem 0.45rem; border-radius: 3px; border: 1px solid rgba(99, 102, 241, 0.3); font-weight: 600; text-decoration: none;" title="Buy on ${l.source}">Visit <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.65rem;"></i></a>
                                 </div>
                             </div>
@@ -427,6 +630,21 @@ async function openStoreModal(encodedName) {
             throw new Error("No comparative listings found for this product.");
         }
         
+        // Track user category history
+        if (data.category) {
+            trackUserCategory(data.category);
+        }
+        
+        // Save current minimum price for alert subscriptions
+        const prices = data.listings.map(l => l.price).filter(p => p !== null && p > 0);
+        const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
+        storeModal.dataset.currentMinPrice = minPrice;
+        
+        const targetInput = document.getElementById("alert-target-price");
+        if (targetInput && minPrice > 0) {
+            targetInput.placeholder = `Target e.g. ${Math.round(minPrice * 0.9)}`;
+        }
+        
         // 1. Render store cards
         listingsContainer.innerHTML = "";
         data.listings.forEach(listing => {
@@ -436,10 +654,13 @@ async function openStoreModal(encodedName) {
             // Radial percentage for conic gradient
             const percent = Math.round(listing.ml_score);
             
+            const lastUpdatedTime = listing.last_updated || data.listings[0].last_updated;
+            const timeAgo = getRelativeTime(lastUpdatedTime);
+            
             lCard.innerHTML = `
                 <div class="listing-store-info">
                     <span class="listing-store-name"><i class="fa-solid fa-store" style="color: var(--accent);"></i> ${listing.source}</span>
-                    <span style="font-size: 0.8125rem; color: var(--text-muted);">Rating: ${listing.rating} ⭐</span>
+                    <span style="font-size: 0.65rem; color: #a5b4fc; display: block; margin-top: 2px;"><i class="fa-solid fa-clock-rotate-left"></i> ${timeAgo}</span>
                 </div>
                 <div class="listing-ml-block">
                     <div class="score-radial" data-score="${percent}" style="--percentage: ${percent}%"></div>
@@ -466,11 +687,103 @@ async function openStoreModal(encodedName) {
             specsContainer.appendChild(sItem);
         });
         
-        // 3. Render reviews
+        // 3. Render Price Prediction
+        const firstListing = data.listings[0] || {};
+        const prediction = firstListing.price_prediction || { decision: "Buy Now", confidence: 80.0, reason: "Stable pricing." };
+        const badge = document.getElementById("prediction-badge-val");
+        const confidence = document.getElementById("prediction-confidence-val");
+        const reason = document.getElementById("prediction-reason-val");
+        
+        if (badge && confidence && reason) {
+            badge.textContent = prediction.decision;
+            confidence.textContent = `${prediction.confidence}% Confidence`;
+            reason.textContent = prediction.reason;
+            
+            if (prediction.decision.toLowerCase() === "buy now") {
+                badge.style.background = "var(--success-light)";
+                badge.style.color = "var(--success)";
+                badge.parentNode.parentNode.style.borderColor = "rgba(16, 185, 129, 0.4)";
+            } else {
+                badge.style.background = "var(--warning-light)";
+                badge.style.color = "var(--warning)";
+                badge.parentNode.parentNode.style.borderColor = "rgba(245, 158, 11, 0.4)";
+            }
+        }
+        
+        // 4. Render Price History Chart
+        currentPriceHistory = firstListing.price_history || [];
+        
+        // Reset active range tab to 7D
+        document.querySelectorAll(".range-btn").forEach(b => {
+            b.classList.remove("active");
+            b.style.background = "rgba(255,255,255,0.02)";
+            b.style.borderColor = "rgba(255,255,255,0.05)";
+            b.style.color = "var(--text-muted)";
+            b.style.fontWeight = "normal";
+        });
+        const d7Btn = document.querySelector('.range-btn[data-range="7"]');
+        if (d7Btn) {
+            d7Btn.classList.add("active");
+            d7Btn.style.background = "rgba(255,255,255,0.08)";
+            d7Btn.style.borderColor = "rgba(255,255,255,0.15)";
+            d7Btn.style.color = "var(--text-main)";
+            d7Btn.style.fontWeight = "600";
+        }
+        
+        drawPriceHistoryChart(currentPriceHistory, 7);
+        
+        // 5. Render reviews and Authenticity metrics
         const reviewsContainer = document.getElementById("reviews-list-container");
+        const authenticityBadge = document.getElementById("reviews-authenticity-badge");
         reviewsContainer.innerHTML = "";
         
-        // Extract all reviews from all listings
+        const trustScore = firstListing.review_trust_score !== undefined ? firstListing.review_trust_score : 100.0;
+        if (authenticityBadge) {
+            authenticityBadge.textContent = `Trust Score: ${trustScore}%`;
+            if (trustScore < 70) {
+                authenticityBadge.style.background = "var(--danger-light)";
+                authenticityBadge.style.color = "var(--danger)";
+            } else if (trustScore < 90) {
+                authenticityBadge.style.background = "var(--warning-light)";
+                authenticityBadge.style.color = "var(--warning)";
+            } else {
+                authenticityBadge.style.background = "var(--success-light)";
+                authenticityBadge.style.color = "var(--success)";
+            }
+        }
+
+        // Render AI Pros & Cons Highlights
+        const prosContainer = document.getElementById("modal-pros-list");
+        const consContainer = document.getElementById("modal-cons-list");
+        if (prosContainer && consContainer) {
+            prosContainer.innerHTML = "";
+            consContainer.innerHTML = "";
+            
+            const prosList = firstListing.pros || [];
+            const consList = firstListing.cons || [];
+            
+            if (prosList.length > 0) {
+                prosList.forEach(pro => {
+                    const li = document.createElement("li");
+                    li.innerHTML = `<span style="color: var(--success); font-weight: bold; margin-right: 4px;">✓</span> ${pro}`;
+                    prosContainer.appendChild(li);
+                });
+            } else {
+                prosContainer.innerHTML = '<li style="font-style: italic; color: var(--text-muted);">No pros highlights available</li>';
+            }
+            
+            if (consList.length > 0) {
+                consList.forEach(con => {
+                    const li = document.createElement("li");
+                    li.innerHTML = `<span style="color: var(--danger); font-weight: bold; margin-right: 4px;">✗</span> ${con}`;
+                    consContainer.appendChild(li);
+                });
+            } else {
+                consContainer.innerHTML = '<li style="font-style: italic; color: var(--text-muted);">No cons highlights available</li>';
+            }
+        }
+        
+        // Extract all reviews from listings
         let allReviews = [];
         (data.listings || []).forEach(l => {
             const reviews = l.reviews || [];
@@ -479,26 +792,36 @@ async function openStoreModal(encodedName) {
             });
         });
         
-        // Take top 4 random reviews to display
+        // Take top 4 reviews
         allReviews.sort(() => 0.5 - Math.random());
         const displayReviews = allReviews.slice(0, 4);
         
         displayReviews.forEach(r => {
             const rItem = document.createElement("div");
             rItem.className = "review-item";
+            rItem.style.padding = "8px 12px";
+            rItem.style.background = "rgba(255,255,255,0.015)";
+            rItem.style.border = "1px solid rgba(255,255,255,0.03)";
+            rItem.style.borderRadius = "8px";
+            
+            const fakeWarning = r.is_fake ? `<span style="font-size: 0.65rem; padding: 2px 6px; background: var(--danger-light); color: var(--danger); border-radius: 4px; font-weight: 700; margin-left: 6px;"><i class="fa-solid fa-triangle-exclamation"></i> Suspicious (ML Flag)</span>` : '';
+            if (r.is_fake) {
+                rItem.style.background = "rgba(239, 68, 68, 0.05)";
+                rItem.style.border = "1px dashed rgba(239, 68, 68, 0.25)";
+            }
+            
             rItem.innerHTML = `
-                <div class="review-meta">
-                    <span><strong>${r.author}</strong> via ${r.source}</span>
+                <div class="review-meta" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px; font-size:0.75rem;">
+                    <span><strong>${r.author}</strong> via ${r.source} ${fakeWarning}</span>
                     <span style="color: var(--warning);">${renderStars(r.rating || 4.0)}</span>
                 </div>
-                <div class="review-title">${r.title}</div>
-                <div class="review-text">"${r.text}"</div>
+                <div class="review-title" style="font-weight: 600; font-size: 0.8rem; margin-bottom: 2px;">${r.title}</div>
+                <div class="review-text" style="font-size: 0.75rem; color: var(--text-muted);">"${r.text}"</div>
             `;
             reviewsContainer.appendChild(rItem);
         });
         
-        // 4. Update Sentiment analysis marker
-        // Average sentiment score over listings (scaled from -1..1 to 0..100)
+        // 6. Update Sentiment analysis marker
         const avgSentiment = data.listings.reduce((sum, current) => sum + (current.ml_sentiment || 0), 0) / data.listings.length;
         const sentPercent = Math.round(((avgSentiment + 1) / 2) * 100);
         
@@ -517,7 +840,7 @@ async function openStoreModal(encodedName) {
         
         document.getElementById("sentiment-desc").innerHTML = `NLP Sentiment Index: <strong style="color: ${sentimentColor};">${sentimentWord} (${Math.round(avgSentiment * 100) / 100})</strong> based on review logs.`;
 
-        // 5. Draw comparison chart
+        // 7. Draw comparison chart
         drawStoreChart(data.listings);
         
     } catch (err) {
@@ -1009,4 +1332,235 @@ function setupCardTiltListeners() {
             card.style.transform = "perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)";
         });
     });
+}
+
+let priceHistoryChartInstance = null;
+
+function drawPriceHistoryChart(priceHistory, range = 7) {
+    const canvas = document.getElementById("price-history-chart");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    
+    if (priceHistoryChartInstance) {
+        priceHistoryChartInstance.destroy();
+    }
+    
+    if (!priceHistory || priceHistory.length === 0) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "12px Outfit, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("No historical price logs available.", canvas.width / 2, canvas.height / 2);
+        return;
+    }
+    
+    const sortedHistory = [...priceHistory].sort((a, b) => a.date.localeCompare(b.date));
+    
+    // Slice to the requested range limit
+    const rangeLimit = parseInt(range) || 7;
+    const filteredHistory = sortedHistory.slice(-rangeLimit);
+    
+    const labels = filteredHistory.map(h => {
+        const parts = h.date.split("-");
+        return parts.length >= 3 ? `${parts[1]}/${parts[2]}` : h.date;
+    });
+    const dataPoints = filteredHistory.map(h => h.price);
+    
+    priceHistoryChartInstance = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: labels,
+            datasets: [{
+                label: "Price (INR)",
+                data: dataPoints,
+                borderColor: "#06b6d4",
+                backgroundColor: "rgba(6, 182, 212, 0.08)",
+                fill: true,
+                tension: 0.3,
+                borderWidth: 2,
+                pointBackgroundColor: "#06b6d4",
+                pointHoverBackgroundColor: "#fff",
+                pointRadius: 3,
+                pointHoverRadius: 5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    grid: { color: "rgba(255,255,255,0.03)" },
+                    ticks: { color: "#94a3b8", font: { size: 9, family: "Outfit" } }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: "#94a3b8", font: { size: 9, family: "Outfit" } }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `Price: \u20b9${context.raw.toLocaleString()}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function trackUserSearch(query) {
+    if (!query) return;
+    try {
+        let history = JSON.parse(localStorage.getItem("smartcompare_history") || "{}");
+        let searches = history.recent_searches || [];
+        
+        searches = searches.filter(s => s.toLowerCase() !== query.toLowerCase());
+        searches.unshift(query);
+        
+        history.recent_searches = searches.slice(0, 3);
+        localStorage.setItem("smartcompare_history", JSON.stringify(history));
+        
+        // loadPersonalizedRecommendations();
+    } catch (e) {
+        console.error("History tracking error:", e);
+    }
+}
+
+function trackUserCategory(category) {
+    if (!category) return;
+    try {
+        let history = JSON.parse(localStorage.getItem("smartcompare_history") || "{}");
+        let categories = history.categories || [];
+        
+        categories = categories.filter(c => c !== category);
+        categories.unshift(category);
+        
+        history.categories = categories.slice(0, 3);
+        localStorage.setItem("smartcompare_history", JSON.stringify(history));
+        
+        // loadPersonalizedRecommendations();
+    } catch (e) {
+        console.error("History tracking error:", e);
+    }
+}
+
+async function loadPersonalizedRecommendations() {
+    return; // Completely disabled to improve loading speed and prevent category leaks
+    const recoSec = document.getElementById("recommendations-sec");
+    const recoGrid = document.getElementById("recommendations-grid");
+    if (!recoSec || !recoGrid) return;
+    
+    // Hide recommendations at the bottom if the user has entered a search query or category filter
+    const query = searchInput ? searchInput.value.trim() : "";
+    const aiToggle = document.getElementById("ai-toggle");
+    const isAiMode = aiToggle && aiToggle.checked;
+    
+    if (query || currentCategory || isAiMode) {
+        recoSec.style.display = "none";
+        return;
+    }
+    
+    try {
+        let history = JSON.parse(localStorage.getItem("smartcompare_history") || "{}");
+        const categories = history.categories || [];
+        const searches = history.recent_searches || [];
+        
+        const res = await fetch(`${API_BASE}/api/recommendations`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                categories: categories,
+                recent_searches: searches
+            })
+        });
+        
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        if (data.recommendations && data.recommendations.length > 0) {
+            recoGrid.innerHTML = "";
+            data.recommendations.forEach((p, idx) => {
+                const card = document.createElement("div");
+                card.className = "product-card";
+                card.style.animationDelay = `${idx * 50}ms`;
+                
+                let badgeClass = "badge-rec";
+                if (p.ml_label === "Best Value") badgeClass = "badge-best-value";
+                else if (p.ml_label === "Budget Pick") badgeClass = "badge-budget";
+                else if (p.ml_label === "Premium Choice") badgeClass = "badge-premium";
+                
+                const priceText = p.price ? `\u20b9${p.price.toLocaleString()}` : "Check Stores";
+                
+                card.innerHTML = `
+                    <div class="card-glare"></div>
+                    <span class="card-badge ${badgeClass}">${p.ml_label}</span>
+                    <div class="card-img-wrapper" style="height: 120px;">
+                        <img src="${p.image_url}" alt="${p.name}" onerror="this.src='https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=300&auto=format&fit=crop'" style="max-height: 100px;">
+                    </div>
+                    <div class="card-content" style="padding: 1rem;">
+                        <div class="card-category" style="font-size: 0.65rem;">${p.category}</div>
+                        <div class="card-title" style="font-size: 0.9rem; font-weight: 700; height: auto; margin-bottom: 0.5rem; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${p.name}</div>
+                        <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.8rem;">Est: ${priceText}</div>
+                        <button class="compare-btn" style="width: 100%; padding: 8px;" onclick="openStoreModal('${encodeURIComponent(p.name)}')">Compare Stores</button>
+                    </div>
+                `;
+                recoGrid.appendChild(card);
+            });
+            recoSec.style.display = "block";
+            setupCardTiltListeners();
+        } else {
+            recoSec.style.display = "none";
+        }
+    } catch (err) {
+        console.error("Error loading recommendations:", err);
+        recoSec.style.display = "none";
+    }
+}
+
+async function fetchNotifications() {
+    const badge = document.getElementById("notification-count");
+    const list = document.getElementById("notification-list");
+    if (!badge || !list) return;
+    
+    try {
+        const res = await fetch(`${API_BASE}/api/notifications`);
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        if (data.notifications && data.notifications.length > 0) {
+            badge.textContent = data.notifications.length;
+            badge.style.display = "flex";
+            
+            list.innerHTML = "";
+            data.notifications.forEach(n => {
+                const item = document.createElement("div");
+                item.className = "notification-item";
+                item.style.padding = "6px 0";
+                item.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+                
+                const ts = new Date(n.timestamp);
+                const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                item.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; font-weight: 600; font-size: 0.75rem; color: var(--text-main); margin-bottom: 2px;">
+                        <span>${n.product_name}</span>
+                        <span style="color: var(--accent); font-weight: normal;">${timeStr}</span>
+                    </div>
+                    <div style="color: var(--text-muted); font-size: 0.7rem; line-height: 1.3;">${n.message}</div>
+                `;
+                list.appendChild(item);
+            });
+        } else {
+            badge.style.display = "none";
+            badge.textContent = "0";
+            list.innerHTML = `
+                <div class="empty-notification" style="text-align: center; padding: 15px 0; font-style: italic;">No price alerts triggered yet.</div>
+            `;
+        }
+    } catch (err) {
+        console.error("Error fetching notifications:", err);
+    }
 }

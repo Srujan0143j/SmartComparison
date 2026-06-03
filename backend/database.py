@@ -107,6 +107,23 @@ class MockCollection:
                 doc[k] = v
         return type('UpdateResult', (object,), {'modified_count': 1 if doc else 0})
 
+    def update_many(self, filter_dict, update_dict):
+        modified_count = 0
+        if "$set" in update_dict:
+            for doc in self.data:
+                if self._match_doc(doc, filter_dict):
+                    for k, v in update_dict["$set"].items():
+                        doc[k] = v
+                    modified_count += 1
+        return type('UpdateResult', (object,), {'modified_count': modified_count})
+
+    def distinct(self, key):
+        values = set()
+        for doc in self.data:
+            if key in doc:
+                values.add(doc[key])
+        return list(values)
+
 class MockDB:
     def __init__(self):
         self.collections = {}
