@@ -631,6 +631,8 @@ def search_products(
                         gm["best_deal_price"] = price_to_use
                         gm["best_deal_url"] = url_to_use
                         gm["best_deal_score"] = curr_ml
+                        gm["ml_score"] = curr_ml
+                        gm["ml_label"] = p.get("ml_label") or "Recommended"
         # Sort grouped models by ML score descending so the best products are recommended first
         results_list = list(grouped_models.values())
         results_list.sort(key=lambda x: x.get("ml_score", 0.0), reverse=True)

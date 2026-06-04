@@ -2,6 +2,19 @@ import math
 import re
 from typing import List, Dict, Any
 
+CATEGORY_PRICE_RANGES = {
+    'Appliances': (5800.0, 93100.0),
+    'Audio Speakers': (3900.0, 61900.0),
+    'Cameras': (14400.0, 571400.0),
+    'Gaming Consoles': (5800.0, 59200.0),
+    'Headphones': (3400.0, 33500.0),
+    'Laptops': (37300.0, 256600.0),
+    'Monitors': (14500.0, 144800.0),
+    'Smartphones': (14000.0, 170800.0),
+    'Smartwatches': (4800.0, 93100.0),
+    'TVs': (13600.0, 256800.0),
+}
+
 def analyze_sentiment(text: str) -> float:
     """A fast, rule-based lexicon sentiment analyzer in pure Python.
     Returns a score between -1.0 (very negative) and 1.0 (very positive).
@@ -272,25 +285,33 @@ class MLEngine:
             p["pros"] = summary["pros"]
             p["cons"] = summary["cons"]
 
-        # 2. Extract price and review count bounds for normalization
-        prices = [p.get("price") for p in products if p.get("price") is not None]
-        min_price = min(prices) if prices else 0
-        max_price = max(prices) if prices else 0
-
+        # 2. Extract review count bounds for normalization
         review_counts = [p.get("review_count", 0) or 0 for p in products]
         max_reviews = max(review_counts) if review_counts and max(review_counts) > 0 else 1
 
         # 3. Compute metrics for each product
         for p in products:
             price_val = p.get("price")
-            if price_val is None:
-                price_val = max_price
-                
-            # Price Score: cheaper is better
-            if max_price == min_price:
-                p_score = 1.0
+            category = p.get("category", "")
+            
+            # Use category-specific price ranges for normalization
+            min_price, max_price = CATEGORY_PRICE_RANGES.get(category, (0, 0))
+            
+            if min_price > 0 and max_price > min_price and price_val is not None:
+                # Clamp price to range to be safe
+                clamped_price = max(min_price, min(max_price, price_val))
+                p_score = 1.0 - ((clamped_price - min_price) / (max_price - min_price))
             else:
-                p_score = 1.0 - ((price_val - min_price) / (max_price - min_price))
+                # Fallback to local batch bounds if category range is missing
+                batch_prices = [prod.get("price") for prod in products if prod.get("price") is not None]
+                b_min = min(batch_prices) if batch_prices else 0
+                b_max = max(batch_prices) if batch_prices else 0
+                if b_max == b_min:
+                    p_score = 1.0
+                elif price_val is not None:
+                    p_score = 1.0 - ((price_val - b_min) / (b_max - b_min))
+                else:
+                    p_score = 0.5
 
             # Rating Score: 0 to 1
             rating_val = p.get("rating", 3.0)
@@ -322,21 +343,58 @@ class MLEngine:
                 3: "Best Value",
                 0: "Recommended"
             }
-            p["ml_label"] = label_map.get(pred_class, "Recommended")
-            p["price_prediction"] = self.calculate_price_prediction(p.get("price_history", []), price_val)
+            
+            # Enforce clean price/rating constraints on the predicted labels
+            final_label = label_map.get(pred_class, "Recommended")
+            if final_label == "Budget Pick" and p_score <= 0.65:
+                final_label = "Recommended"
+            elif final_label == "Best Value" and p_score < 0.4:
+                final_label = "Premium Choice" if r_score >= 0.8 else "Recommended"
+            elif final_label == "Premium Choice" and p_score >= 0.5:
+                final_label = "Best Value" if r_score >= 0.8 else "Recommended"
+                
+            p["ml_label"] = final_label
+            p["price_prediction"] = self.calculate_price_prediction(p.get("price_history", []), price_val or min_price)
 
         # Sort products by ML Score descending
         sorted_by_score = sorted(products, key=lambda x: x["ml_score"], reverse=True)
-        if sorted_by_score:
-            sorted_by_score[0]["ml_label"] = "Best Value"
+        
+        # Override the highest scoring reasonable product (not expensive, i.e., p_score >= 0.4) to "Best Value"
+        best_value_candidate = None
+        for p in sorted_by_score:
+            price_val = p.get("price")
+            category = p.get("category", "")
+            min_price, max_price = CATEGORY_PRICE_RANGES.get(category, (0, 0))
+            if min_price > 0 and max_price > min_price and price_val is not None:
+                clamped_price = max(min_price, min(max_price, price_val))
+                p_score = 1.0 - ((clamped_price - min_price) / (max_price - min_price))
+            else:
+                p_score = 1.0
             
+            if p_score >= 0.4:
+                best_value_candidate = p
+                break
+                
+        if best_value_candidate:
+            best_value_candidate["ml_label"] = "Best Value"
+            
+        # Cheapest-product override should only apply to actual budget tier products (p_score > 0.65)
         sorted_by_price = sorted(products, key=lambda x: x.get("price") if x.get("price") is not None else float('inf'))
         if sorted_by_price and len(products) > 1:
             cheapest = sorted_by_price[0]
             cheapest_price = cheapest.get("price")
             cheapest_rating = cheapest.get("rating", 0.0) or 0.0
             cheapest_label = cheapest.get("ml_label")
-            if cheapest_price is not None and cheapest_rating >= 3.5 and cheapest_label != "Best Value":
+            
+            cheapest_cat = cheapest.get("category", "")
+            min_price, max_price = CATEGORY_PRICE_RANGES.get(cheapest_cat, (0, 0))
+            if min_price > 0 and max_price > min_price and cheapest_price is not None:
+                clamped_price = max(min_price, min(max_price, cheapest_price))
+                cheapest_p_score = 1.0 - ((clamped_price - min_price) / (max_price - min_price))
+            else:
+                cheapest_p_score = 1.0
+                
+            if cheapest_price is not None and cheapest_rating >= 3.5 and cheapest_label != "Best Value" and cheapest_p_score > 0.65:
                 cheapest["ml_label"] = "Budget Pick"
 
         return products
